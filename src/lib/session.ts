@@ -4,8 +4,8 @@ import type { AdminRole } from '@/types';
 
 const JWT_SECRET_KEY = process.env.JWT_SECRET_KEY;
 
-if (!JWT_SECRET_KEY) {
-  throw new Error("JWT_SECRET_KEY is not set in environment variables. Please generate a strong secret key using 'openssl rand -base64 32'.");
+if (!JWT_SECRET_KEY || JWT_SECRET_KEY.trim() === "") {
+  throw new Error("JWT_SECRET_KEY is not set or is empty in environment variables. Please generate a strong secret key using 'openssl rand -base64 32' and set it in your .env file.");
 }
 
 const key = new TextEncoder().encode(JWT_SECRET_KEY);
@@ -39,3 +39,4 @@ export async function decryptSession(sessionToken: string | undefined): Promise<
     return null;
   }
 }
+
