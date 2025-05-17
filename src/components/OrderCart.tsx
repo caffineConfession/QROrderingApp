@@ -1,5 +1,6 @@
 "use client";
 
+import React from 'react'; // Added this line
 import type { CartItem } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
