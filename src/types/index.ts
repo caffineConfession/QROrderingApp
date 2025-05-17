@@ -36,3 +36,17 @@ export interface Order extends CustomerDetails {
   orderId?: string; // Generated upon successful order
   timestamp?: Date;
 }
+
+export const ADMIN_ROLES = {
+  MANUAL_ORDER_TAKER: "MANUAL_ORDER_TAKER",
+  ORDER_PROCESSOR: "ORDER_PROCESSOR",
+  BUSINESS_MANAGER: "BUSINESS_MANAGER",
+} as const;
+
+export type AdminRole = typeof ADMIN_ROLES[keyof typeof ADMIN_ROLES];
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  role: AdminRole;
+}
