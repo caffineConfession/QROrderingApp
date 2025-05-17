@@ -2,7 +2,8 @@
 
 import { useState, useMemo } from 'react';
 import type { MenuItem, ItemServingType, CartItem, CustomerDetails, PaymentMethod } from '@/types';
-import { MENU_CATEGORIES, COFFEE_FLAVORS, SHAKE_FLAVORS, PRICES } from '@/lib/constants';
+import { MENU_CATEGORIES } from '@/types'; // Updated import path
+import { COFFEE_FLAVORS, SHAKE_FLAVORS, PRICES } from '@/lib/constants';
 import Header from '@/components/Header';
 import MenuItemCard from '@/components/MenuItemCard';
 import OrderCart from '@/components/OrderCart';
@@ -13,6 +14,9 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from '@/components/ui/button';
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
+
 
 type AppState = "menu" | "checkout" | "confirmation";
 
