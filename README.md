@@ -1,4 +1,4 @@
-
+ 
 # Caffico Express - Firebase Studio
 
 This is a Next.js starter project for Caffico Express, built with Firebase Studio.
