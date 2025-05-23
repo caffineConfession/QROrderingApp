@@ -1,11 +1,17 @@
 
 import { PrismaClient } from '@prisma/client'
 
+const DATABASE_URL = process.env.DATABASE_URL;
+
+if (!DATABASE_URL || DATABASE_URL.trim() === "") {
+  throw new Error("DATABASE_URL is not set or is empty in environment variables. Please provide a valid PostgreSQL connection string in your .env file.");
+}
+
 const prismaClientSingleton = () => {
   return new PrismaClient({
     datasources: {
       db: {
-        url: process.env.DATABASE_URL,
+        url: DATABASE_URL,
       },
     },
   })
