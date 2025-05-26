@@ -1,3 +1,4 @@
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -8,16 +9,70 @@ generator client {
 }
 
 model AdminUser {
-  id        String  @id @default(uuid())
-  email     String  @unique
-  password  String // In a real app, this should be a hashed password
-  role      AdminRole
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              String        @id @default(cuid())
+  email           String        @unique
+  hashedPassword  String // In a real app, this would be a hash, not related to JWT_SECRET_KEY
+  role            AdminRole
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  ordersProcessed Order[]       @relation("ProcessedOrders")
+  ordersTaken     Order[]       @relation("TakenOrders")
+  sessions        AdminSession[]
+}
 
-  // Relations
-  processedOrders Order[] @relation("ProcessedOrders")
-  takenOrders     Order[] @relation("TakenOrders")
+// Optional: For more robust session management if storing sessions in DB
+model AdminSession {
+  id        String     @id @default(cuid())
+  sid       String     @unique // Session ID
+  data      String     // Session data
+  expiresAt DateTime
+  adminUser AdminUser? @relation(fields: [adminUserId], references: [id])
+  adminUserId String?
+}
+
+model Product {
+  id          String       @id @default(cuid())
+  name        String       // e.g., Vanilla, Chocolate Shake
+  category    String       // e.g., Blended Cold Coffee, Shakes (matches MENU_CATEGORIES values)
+  imageHint   String       // For placeholder images
+  // Prices will be determined by category and serving type, possibly from constants or a related Price model later
+  // basePrice   Float?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  orderItems  OrderItem[]
+}
+
+model Order {
+  id              String      @id @default(cuid())
+  customerName    String?     // Optional for quick orders, but good for manual entry
+  customerPhone   String?
+  customerEmail   String?     // Optional
+  totalAmount     Float
+  status          OrderStatus // e.g., PENDING, RECEIVED, PREPARING, COMPLETED, DELIVERED, CANCELLED
+  paymentMethod   PaymentType // e.g., CASH, UPI, RAZORPAY_ONLINE
+  paymentConfirmed Boolean    @default(false) // True if cash received or UPI confirmed
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  items           OrderItem[]
+
+  processedBy   AdminUser?   @relation("ProcessedOrders", fields: [processedById], references: [id])
+  processedById String?
+  takenBy       AdminUser?   @relation("TakenOrders", fields: [takenById], references: [id]) // For manual orders
+  takenById     String?
+}
+
+model OrderItem {
+  id                String   @id @default(cuid())
+  order             Order    @relation(fields: [orderId], references: [id])
+  orderId           String
+  product           Product  @relation(fields: [productId], references: [id])
+  productId         String
+  quantity          Int
+  priceAtPurchase   Float    // Price per unit at the time of order (accounts for serving type)
+  servingType       String   // e.g., "Cone", "Cup"
+  customizationNotes String?  // e.g., "sweet", "bitter", "normal"
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 }
 
 enum AdminRole {
@@ -26,57 +81,17 @@ enum AdminRole {
   BUSINESS_MANAGER
 }
 
-model Product {
-  id          String   @id @default(uuid())
-  name        String // e.g., Vanilla Coffee, Chocolate Shake
-  category    String // e.g., COFFEE, SHAKE from your MENU_CATEGORIES
-  servingType String // e.g., Cone, Cup
-  price       Float
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  // Relation to OrderItem
-  orderItems OrderItem[]
-}
-
-model Order {
-  id            String      @id @default(uuid())
-  customerName  String
-  customerPhone String
-  customerEmail String
-  totalAmount   Float
-  paymentMethod String // e.g., Cash, Razorpay
-  orderStatus   OrderStatus @default(PENDING) // PENDING, RECEIVED, PREPARING, READY_FOR_PICKUP, COMPLETED, CANCELLED
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
-
-  // Relations
-  items         OrderItem[]
-
-  processedBy   AdminUser?   @relation("ProcessedOrders", fields: [processedById], references: [id])
-  processedById String?
-  takenBy       AdminUser?   @relation("TakenOrders", fields: [takenById], references: [id])
-  takenById     String?
-}
-
-model OrderItem {
-  id        String  @id @default(uuid())
-  orderId   String
-  order     Order   @relation(fields: [orderId], references: [id])
-  productId String
-  product   Product @relation(fields: [productId], references: [id])
-  quantity  Int
-  price     Float // Price at the time of order for this item (quantity * product.price)
-  createdAt DateTime @default(now())
-
-  @@unique([orderId, productId]) // Ensure a product appears only once per order, quantity handles multiples
-}
-
 enum OrderStatus {
-  PENDING          // Order placed by customer, not yet seen by admin
-  RECEIVED         // Order acknowledged by admin (e.g., Order Processor)
-  PREPARING        // Order is being made
-  READY_FOR_PICKUP // Order is ready for the customer
-  COMPLETED        // Order picked up and paid (if applicable)
-  CANCELLED        // Order cancelled
+  PENDING_PAYMENT // For online orders before payment or cash orders before confirmation
+  RECEIVED        // Payment confirmed, ready for processing
+  PREPARING
+  READY_FOR_PICKUP
+  COMPLETED       // Picked up / Delivered
+  CANCELLED
+}
+
+enum PaymentType {
+  CASH
+  UPI
+  RAZORPAY_ONLINE // For customer-facing app's online payments
 }
