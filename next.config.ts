@@ -20,18 +20,20 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  webpack: (config: any /* type it as WebpackConfiguration if you have webpack types installed */) => {
-    // Ensure externals is an array (Next.js usually initializes it as one)
-    if (!Array.isArray(config.externals)) {
-        config.externals = [];
-    }
+  // Removing webpack externals for @prisma/client to let Next.js handle it by default
+  // webpack: (config: any /* type it as WebpackConfiguration if you have webpack types installed */) => {
+  //   // Ensure externals is an array (Next.js usually initializes it as one)
+  //   if (!Array.isArray(config.externals)) {
+  //       config.externals = [];
+  //   }
     
-    config.externals.push({
-      '@prisma/client': '@prisma/client',
-    });
+  //   config.externals.push({
+  //     '@prisma/client': '@prisma/client',
+  //   });
     
-    return config;
-  },
+  //   return config;
+  // },
 };
 
 export default nextConfig;
+
