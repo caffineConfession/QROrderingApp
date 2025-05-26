@@ -11,14 +11,18 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { OrderStatus } from "@/types";
+// Import OrderStatus from @prisma/client for type consistency if it's passed from a server action that uses it
+// However, the string values are what matter for the action call.
+// For props, it might be okay to use from "@/types" if server action handles conversion or Prisma client is robust.
+// For direct usage with action, Prisma's enum is safer.
+import { OrderStatus } from "@prisma/client"; // Use Prisma's enum if this component directly sends it to an action expecting Prisma's type
 import { updateOrderStatusAction } from "./actions";
 import { useToast } from "@/hooks/use-toast";
 import { ChevronDown, RefreshCw } from "lucide-react";
 
 interface OrderStatusUpdaterProps {
   orderId: string;
-  currentStatus: OrderStatus;
+  currentStatus: OrderStatus; // This prop should ideally be of type OrderStatus from @prisma/client
 }
 
 const getNextStatuses = (currentStatus: OrderStatus): OrderStatus[] => {
@@ -45,6 +49,7 @@ export default function OrderStatusUpdater({ orderId, currentStatus }: OrderStat
     if (isLoading || isPending) return;
     setIsLoading(true);
     startTransition(async () => {
+      // The updateOrderStatusAction expects OrderStatus from @prisma/client
       const result = await updateOrderStatusAction(orderId, newStatus);
       if (result.success) {
         toast({

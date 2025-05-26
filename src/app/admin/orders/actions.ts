@@ -2,7 +2,8 @@
 "use server";
 
 import prisma from "@/lib/prisma";
-import { OrderStatus, PaymentStatus, type AdminRole } from "@/types";
+import { OrderStatus, PaymentStatus } from "@prisma/client"; // Changed import
+import type { AdminRole } from "@/types"; // AdminRole can still come from types
 import { cookies } from "next/headers";
 import { decryptSession } from "@/lib/session";
 import { revalidatePath } from "next/cache";
@@ -27,10 +28,10 @@ export async function getProcessableOrdersAction(): Promise<{
   try {
     const orders = await prisma.order.findMany({
       where: {
-        paymentStatus: PaymentStatus.PAID,
+        paymentStatus: PaymentStatus.PAID, // Uses Prisma's PaymentStatus enum
         status: {
           in: [
-            OrderStatus.PENDING_PREPARATION,
+            OrderStatus.PENDING_PREPARATION, // Uses Prisma's OrderStatus enum
             OrderStatus.PREPARING,
             OrderStatus.READY_FOR_PICKUP,
           ],
@@ -40,7 +41,7 @@ export async function getProcessableOrdersAction(): Promise<{
         items: true,
       },
       orderBy: {
-        createdAt: "asc", 
+        createdAt: "asc",
       },
     });
     return { success: true, orders };
@@ -52,7 +53,7 @@ export async function getProcessableOrdersAction(): Promise<{
 
 export async function updateOrderStatusAction(
   orderId: string,
-  newStatus: OrderStatus
+  newStatus: OrderStatus // Expecting Prisma's OrderStatus enum
 ): Promise<{ success: boolean; error?: string }> {
   const sessionCookie = cookies().get("admin_session")?.value;
   const session = await decryptSession(sessionCookie);
@@ -62,21 +63,16 @@ export async function updateOrderStatusAction(
   }
 
   // Validate newStatus to prevent arbitrary status changes
+  // OrderStatus enum here should be the one from @prisma/client
   const allowedStatuses: OrderStatus[] = [
     OrderStatus.PREPARING,
     OrderStatus.READY_FOR_PICKUP,
     OrderStatus.COMPLETED,
-    OrderStatus.CANCELLED, // Allow cancellation
+    OrderStatus.CANCELLED,
   ];
   if (!allowedStatuses.includes(newStatus)) {
     return { success: false, error: "Invalid target status." };
   }
-  
-  // Additional logic for status transitions:
-  // E.g., can only move from PENDING_PREPARATION to PREPARING
-  // Can move from PREPARING to READY_FOR_PICKUP
-  // Can move from READY_FOR_PICKUP to COMPLETED
-  // Can move to CANCELLED from PENDING_PREPARATION or PREPARING (if not too late)
 
   try {
     const order = await prisma.order.findUnique({ where: { id: orderId } });
@@ -103,7 +99,7 @@ export async function updateOrderStatusAction(
       where: { id: orderId },
       data: {
         status: newStatus,
-        processedById: session.userId, // Track who made the change
+        processedById: session.userId, 
         updatedAt: new Date(),
       },
     });

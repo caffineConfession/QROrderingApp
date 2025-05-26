@@ -3,15 +3,20 @@
 
 import prisma from "@/lib/prisma";
 import type { ManualOrderSubmitData, PendingCashOrderView } from "@/types";
-import { OrderStatus, PaymentStatus, OrderSource, PaymentMethod, ItemCategory } from "@/types";
+// Import enums used in Prisma queries from @prisma/client
+import { OrderStatus, PaymentStatus, OrderSource, PaymentMethod, ItemCategory as PrismaItemCategory } from "@prisma/client";
+// Keep ItemCategory from "@/types" for data that doesn't directly go into Prisma query with that specific enum name if needed, or alias Prisma's
+import type { ItemCategory } from "@/types"; // For productInfo.category mapping if needed
+
 import { cookies } from "next/headers";
 import { decryptSession } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import { COFFEE_FLAVORS_BASE, SHAKE_FLAVORS_BASE } from '@/lib/constants';
 
+// Assuming COFFEE_FLAVORS_BASE and SHAKE_FLAVORS_BASE use ItemCategory from @/types
 const ALL_MENU_ITEMS_FLAT = [
-  ...COFFEE_FLAVORS_BASE.map(item => ({ ...item, category: ItemCategory.COFFEE })),
-  ...SHAKE_FLAVORS_BASE.map(item => ({ ...item, category: ItemCategory.SHAKES })),
+  ...COFFEE_FLAVORS_BASE.map(item => ({ ...item, category: item.category as unknown as PrismaItemCategory })), // Cast if necessary
+  ...SHAKE_FLAVORS_BASE.map(item => ({ ...item, category: item.category as unknown as PrismaItemCategory })), // Cast if necessary
 ];
 
 
@@ -35,11 +40,11 @@ export async function createManualOrderAction(
         customerName: data.customerName || null,
         customerPhone: data.customerPhone || null,
         totalAmount: data.totalAmount,
-        paymentMethod: data.paymentMethod, 
-        paymentStatus: PaymentStatus.PAID, 
-        status: OrderStatus.PENDING_PREPARATION, 
-        orderSource: OrderSource.STAFF_MANUAL,
-        takenById: session.userId, 
+        paymentMethod: data.paymentMethod, // This is PaymentMethod from @prisma/client
+        paymentStatus: PaymentStatus.PAID, // This is PaymentStatus from @prisma/client
+        status: OrderStatus.PENDING_PREPARATION, // This is OrderStatus from @prisma/client
+        orderSource: OrderSource.STAFF_MANUAL, // This is OrderSource from @prisma/client
+        takenById: session.userId,
         items: {
           create: data.items.map((item) => {
             const productInfo = ALL_MENU_ITEMS_FLAT.find(p => p.id === item.productId);
@@ -49,19 +54,19 @@ export async function createManualOrderAction(
             return {
               productId: item.productId,
               productName: productInfo.name,
-              category: productInfo.category,
-              servingType: item.servingType,
+              category: productInfo.category, // This should be PrismaItemCategory
+              servingType: item.servingType, // This is ItemServingType from @prisma/client
               quantity: item.quantity,
               priceAtPurchase: item.priceAtPurchase,
-              customization: item.customization,
+              customization: item.customization, // This is CustomizationType from @prisma/client
             };
           }),
         },
       },
     });
 
-    revalidatePath("/admin/orders"); 
-    revalidatePath("/admin/manual-order"); 
+    revalidatePath("/admin/orders");
+    revalidatePath("/admin/manual-order");
 
     return { success: true, orderId: newOrder.id };
   } catch (error) {
@@ -78,23 +83,23 @@ export async function getPendingCashOrdersAction(): Promise<{ success: boolean; 
   try {
     const pendingOrders = await prisma.order.findMany({
       where: {
-        paymentMethod: PaymentMethod.Cash,
-        paymentStatus: PaymentStatus.PENDING,
-        orderSource: OrderSource.CUSTOMER_ONLINE,
-        status: OrderStatus.AWAITING_PAYMENT_CONFIRMATION,
+        paymentMethod: PaymentMethod.Cash, // Prisma's PaymentMethod
+        paymentStatus: PaymentStatus.PENDING, // Prisma's PaymentStatus
+        orderSource: OrderSource.CUSTOMER_ONLINE, // Prisma's OrderSource
+        status: OrderStatus.AWAITING_PAYMENT_CONFIRMATION, // Prisma's OrderStatus
       },
-      select: { 
-        id: true, 
-        customerName: true, 
-        customerPhone: true, 
-        totalAmount: true, 
-        createdAt: true, 
-        items: { 
-          select: { 
-            productName: true, 
-            quantity: true, 
-            servingType: true, 
-            customization: true 
+      select: {
+        id: true,
+        customerName: true,
+        customerPhone: true,
+        totalAmount: true,
+        createdAt: true,
+        items: {
+          select: {
+            productName: true,
+            quantity: true,
+            servingType: true,
+            customization: true
           }
         }
       },
@@ -130,12 +135,11 @@ export async function confirmCashPaymentAction(orderId: string): Promise<{ succe
 
     try {
         const orderToUpdate = await prisma.order.findUnique({
-            where: { 
+            where: {
               id: orderId,
-              paymentMethod: PaymentMethod.Cash,
-              paymentStatus: PaymentStatus.PENDING,
-              // orderSource: OrderSource.CUSTOMER_ONLINE, // Allow confirming for any pending cash order initially
-              status: OrderStatus.AWAITING_PAYMENT_CONFIRMATION,
+              paymentMethod: PaymentMethod.Cash, // Prisma's PaymentMethod
+              paymentStatus: PaymentStatus.PENDING, // Prisma's PaymentStatus
+              status: OrderStatus.AWAITING_PAYMENT_CONFIRMATION, // Prisma's OrderStatus
             }
         });
 
@@ -143,24 +147,25 @@ export async function confirmCashPaymentAction(orderId: string): Promise<{ succe
             const orderExists = await prisma.order.findUnique({ where: { id: orderId }});
             if (!orderExists) return { success: false, error: "Order not found." };
             if (orderExists.paymentStatus === PaymentStatus.PAID) return { success: false, error: "Order already paid."};
-            if (orderExists.status !== OrderStatus.AWAITING_PAYMENT_CONFIRMATION) return { success: false, error: `Order status is ${orderExists.status}, cannot confirm payment.`};
+            // Ensure comparison uses Prisma's OrderStatus enum or its string value
+            if (orderExists.status !== OrderStatus.AWAITING_PAYMENT_CONFIRMATION.toString()) return { success: false, error: `Order status is ${orderExists.status}, cannot confirm payment.`};
             return { success: false, error: "Order not eligible for payment confirmation." };
         }
-        
+
         await prisma.order.update({
             where: {
               id: orderId,
             },
             data: {
-                paymentStatus: PaymentStatus.PAID,
-                status: OrderStatus.PENDING_PREPARATION, 
-                processedById: session.userId, // Log who confirmed the payment
+                paymentStatus: PaymentStatus.PAID, // Prisma's PaymentStatus
+                status: OrderStatus.PENDING_PREPARATION, // Prisma's OrderStatus
+                processedById: session.userId,
                 updatedAt: new Date(),
             },
         });
 
-        revalidatePath("/admin/manual-order"); 
-        revalidatePath("/admin/orders"); 
+        revalidatePath("/admin/manual-order");
+        revalidatePath("/admin/orders");
 
         return { success: true };
     } catch (error) {
