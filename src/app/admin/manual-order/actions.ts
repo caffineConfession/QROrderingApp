@@ -3,10 +3,19 @@
 
 import prisma from "@/lib/prisma";
 import type { ManualOrderSubmitData } from "@/types";
-import { OrderStatus, PaymentStatus, OrderSource, PaymentMethod } from "@/types";
-import { cookies }Galia from "next/headers";
+import { OrderStatus, PaymentStatus, OrderSource, PaymentMethod, ItemCategory } from "@/types";
+import { cookies } from "next/headers";
 import { decryptSession } from "@/lib/session";
 import { revalidatePath } from "next/cache";
+import { COFFEE_FLAVORS_BASE, SHAKE_FLAVORS_BASE } from '@/lib/constants'; // Ensure correct import path
+
+// Helper to get product info - needed for the server action.
+// This should match the structure in constants.ts
+const ALL_MENU_ITEMS_FLAT = [
+  ...COFFEE_FLAVORS_BASE.map(item => ({ ...item, category: ItemCategory.COFFEE })),
+  ...SHAKE_FLAVORS_BASE.map(item => ({ ...item, category: ItemCategory.SHAKES })),
+];
+
 
 export async function createManualOrderAction(
   data: ManualOrderSubmitData
@@ -36,7 +45,6 @@ export async function createManualOrderAction(
         items: {
           create: data.items.map((item) => {
             // Find product details from constants to get category and name
-            // In a full DB setup, you might fetch product from DB by item.productId
             const productInfo = ALL_MENU_ITEMS_FLAT.find(p => p.id === item.productId);
             if (!productInfo) {
                 // This should ideally not happen if product IDs are validated client-side
@@ -44,8 +52,8 @@ export async function createManualOrderAction(
             }
             return {
               productId: item.productId,
-              productName: productInfo.name, 
-              category: productInfo.category,
+              productName: productInfo.name,
+              category: productInfo.category, // This should be the enum value, e.g. ItemCategory.COFFEE
               servingType: item.servingType,
               quantity: item.quantity,
               priceAtPurchase: item.priceAtPurchase,
@@ -82,18 +90,26 @@ export async function getPendingCashOrdersAction(): Promise<{ success: boolean; 
   //     paymentMethod: PaymentMethod.Cash,
   //     paymentStatus: PaymentStatus.PENDING,
   //     orderSource: OrderSource.CUSTOMER_ONLINE,
+  //     status: OrderStatus.AWAITING_PAYMENT_CONFIRMATION,
   //   },
   //   select: { id: true, customerName: true, customerPhone: true, totalAmount: true, createdAt: true, items: { select: { productName: true, quantity: true, servingType: true, customization: true}}},
   //   orderBy: { createdAt: 'asc' }
   // })
   await new Promise(resolve => setTimeout(resolve, 500)); // Simulate network delay
-  return {
-    success: true,
-    orders: [
-      { id: "CUST_CASH_001", customerName: "Customer Cash Uno", customerPhone: "9876543210", totalAmount: 280, orderDate: new Date(Date.now() - 1000 * 60 * 15) , itemsSummary: "Vanilla Coffee (Cup) x 1, Oreo Shake (Cone) x 1" },
-      { id: "CUST_CASH_002", customerName: "Cash Buyer Dos", customerPhone: "9876500000", totalAmount: 150, orderDate: new Date(Date.now() - 1000 * 60 * 5), itemsSummary: "Original Coffee (Cup) x 1" },
-    ]
-  };
+  try {
+    // MOCK IMPLEMENTATION
+    const mockOrders = [
+      { id: "MOCK_CASH_001", customerName: "Mock Customer Cash", customerPhone: "9876543210", totalAmount: 280, orderDate: new Date(Date.now() - 1000 * 60 * 15) , itemsSummary: "Vanilla Coffee (Cup) x 1, Oreo Shake (Cone) x 1" },
+      { id: "MOCK_CASH_002", customerName: "Mock Cash Buyer", customerPhone: "9876500000", totalAmount: 150, orderDate: new Date(Date.now() - 1000 * 60 * 5), itemsSummary: "Original Coffee (Cup) x 1" },
+    ];
+    return {
+      success: true,
+      orders: mockOrders
+    };
+  } catch (error) {
+    console.error("Error fetching pending cash orders:", error);
+    return { success: false, error: "Failed to fetch pending cash orders.", orders: [] };
+  }
 }
 
 export async function confirmCashPaymentAction(orderId: string): Promise<{ success: boolean; error?: string }> {
@@ -103,10 +119,16 @@ export async function confirmCashPaymentAction(orderId: string): Promise<{ succe
     if (!session?.userId) {
         return { success: false, error: "Unauthorized. Admin session not found." };
     }
-    
+
     try {
-        const updatedOrder = await prisma.order.update({
-            where: { id: orderId, paymentMethod: PaymentMethod.Cash, paymentStatus: PaymentStatus.PENDING },
+        const updatedOrder = await prisma.order.updateMany({ // use updateMany if you are not sure if the order exists or want to avoid error if it doesn't
+            where: {
+              id: orderId,
+              // orderSource: OrderSource.CUSTOMER_ONLINE, // Only online customer orders are confirmed this way
+              paymentMethod: PaymentMethod.Cash,
+              paymentStatus: PaymentStatus.PENDING,
+              status: OrderStatus.AWAITING_PAYMENT_CONFIRMATION,
+            },
             data: {
                 paymentStatus: PaymentStatus.PAID,
                 status: OrderStatus.PENDING_PREPARATION, // Now ready for the kitchen
@@ -115,37 +137,23 @@ export async function confirmCashPaymentAction(orderId: string): Promise<{ succe
             },
         });
 
-        if (!updatedOrder) {
-            return { success: false, error: "Order not found or already processed." };
+        if (updatedOrder.count === 0) {
+            // Check if the order exists but was already processed or not eligible
+            const orderExists = await prisma.order.findUnique({ where: { id: orderId }});
+            if (!orderExists) return { success: false, error: "Order not found." };
+            if (orderExists.paymentStatus === PaymentStatus.PAID) return { success: false, error: "Order already paid."};
+            return { success: false, error: "Order not eligible for payment confirmation or already processed." };
         }
-        
+
         revalidatePath("/admin/manual-order"); // To refresh the list of pending orders
         revalidatePath("/admin/orders"); // So order processors see it
 
         return { success: true };
     } catch (error) {
         console.error("Error confirming cash payment:", error);
-        return { success: false, error: "Failed to confirm payment." };
+        if (error instanceof Error) {
+            return { success: false, error: `Failed to confirm payment: ${error.message}` };
+        }
+        return { success: false, error: "Failed to confirm payment due to an unexpected error." };
     }
 }
-
-
-// Helper to get product info - needed for the server action.
-// Ideally, your products would be in the DB. For now, we use constants.
-const COFFEE_FLAVORS_PRODUCTS = [
-  { id: "cff-van", name: "Vanilla", category: ItemCategory.COFFEE, imageHint: "vanilla coffee" },
-  { id: "cff-org", name: "Original", category: ItemCategory.COFFEE, imageHint: "coffee" },
-  { id: "cff-hzn", name: "Hazelnut", category: ItemCategory.COFFEE, imageHint: "hazelnut coffee" },
-  { id: "cff-moc", name: "Mocha", category: ItemCategory.COFFEE, imageHint: "mocha coffee" },
-  { id: "cff-crm", name: "Caramel", category: ItemCategory.COFFEE, imageHint: "caramel coffee" },
-  { id: "cff-cho", name: "Chocolate", category: ItemCategory.COFFEE, imageHint: "chocolate coffee" },
-];
-
-const SHAKE_FLAVORS_PRODUCTS = [
-  { id: "shk-cho", name: "Chocolate", category: ItemCategory.SHAKES, imageHint: "chocolate shake" },
-  { id: "shk-kit", name: "KitKat", category: ItemCategory.SHAKES, imageHint: "kitkat shake" },
-  { id: "shk-oro", name: "Oreo", category: ItemCategory.SHAKES, imageHint: "oreo shake" },
-  { id: "shk-str", name: "Strawberry", category: ItemCategory.SHAKES, imageHint: "strawberry shake" },
-  { id: "shk-ocf", name: "Oreo Coffee", category: ItemCategory.SHAKES, imageHint: "oreo coffee shake" },
-];
-const ALL_MENU_ITEMS_FLAT = [...COFFEE_FLAVORS_PRODUCTS, ...SHAKE_FLAVORS_PRODUCTS];
