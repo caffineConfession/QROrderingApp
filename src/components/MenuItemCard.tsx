@@ -2,8 +2,8 @@
 "use client";
 
 import type { MenuItem, ItemServingType } from '@/types';
-import { PRICES, SERVING_TYPES } from '@/lib/constants';
-import { MENU_CATEGORIES } from '@/types';
+import { SERVING_TYPES } from '@/lib/constants';
+import { ItemCategory } from '@/types'; // Import ItemCategory enum
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,7 +13,7 @@ import { PlusCircle, Coffee as CoffeeIcon, IceCream as IceCreamConeIcon, IceCrea
 import React, { useState } from 'react';
 
 interface MenuItemCardProps {
-  item: MenuItem;
+  item: MenuItem; // MenuItem is type alias for ProductMenuItem which includes prices
   onAddToCart: (item: MenuItem, servingType: ItemServingType, price: number) => void;
 }
 
@@ -21,7 +21,7 @@ export default function MenuItemCard({ item, onAddToCart }: MenuItemCardProps) {
   const [selectedServingType, setSelectedServingType] = useState<ItemServingType>(SERVING_TYPES[0]);
 
   const handleAddToCart = () => {
-    const price = PRICES[item.category][selectedServingType];
+    const price = item.prices[selectedServingType]; // Use item.prices directly
     onAddToCart(item, selectedServingType, price);
   };
 
@@ -54,7 +54,7 @@ export default function MenuItemCard({ item, onAddToCart }: MenuItemCardProps) {
               if (type === 'Cone') {
                 TypeSpecificIcon = IceCreamConeIcon;
               } else { // type === 'Cup'
-                if (item.category === MENU_CATEGORIES.COFFEE) {
+                if (item.category === ItemCategory.COFFEE) { // Use ItemCategory enum for comparison
                   TypeSpecificIcon = CoffeeIcon;
                 } else { // Shakes
                   TypeSpecificIcon = IceCreamBowlIcon;
@@ -70,7 +70,7 @@ export default function MenuItemCard({ item, onAddToCart }: MenuItemCardProps) {
                   <RadioGroupItem value={type} id={`${item.id}-${type}`} className="sr-only" />
                   <TypeSpecificIcon className="mb-1 h-5 w-5" />
                   <span className="text-sm font-medium">{type}</span>
-                  <span className="text-xs text-muted-foreground">₹{PRICES[item.category][type]}</span>
+                  <span className="text-xs text-muted-foreground">₹{item.prices[type]}</span> {/* Use item.prices directly */}
                 </Label>
               );
             })}
@@ -85,4 +85,3 @@ export default function MenuItemCard({ item, onAddToCart }: MenuItemCardProps) {
     </Card>
   );
 }
-

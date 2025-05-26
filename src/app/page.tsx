@@ -1,9 +1,10 @@
+
 "use client";
 
 import { useState, useMemo } from 'react';
 import type { MenuItem, ItemServingType, CartItem, CustomerDetails, PaymentMethod } from '@/types';
-import { MENU_CATEGORIES } from '@/types'; // Updated import path
-import { COFFEE_FLAVORS, SHAKE_FLAVORS, PRICES } from '@/lib/constants';
+import { MENU_CATEGORIES_MAP, ItemCategory } from '@/types'; // Updated import path, Added ItemCategory
+import { ALL_MENU_ITEMS } from '@/lib/constants'; // Changed from COFFEE_FLAVORS, SHAKE_FLAVORS, PRICES
 import Header from '@/components/Header';
 import MenuItemCard from '@/components/MenuItemCard';
 import OrderCart from '@/components/OrderCart';
@@ -81,6 +82,9 @@ export default function HomePage() {
   };
 
   const handleSubmitOrder = (customerDetails: CustomerDetails, paymentMethod: PaymentMethod) => {
+    // In a real app, this would call a server action to save the order to the DB
+    // and handle payment processing (e.g., redirect to Razorpay).
+    // For now, it's a mock submission.
     const totalAmount = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
     const finalOrder = {
       ...customerDetails,
@@ -104,8 +108,8 @@ export default function HomePage() {
     });
   };
 
-  const coffeeItems = useMemo(() => COFFEE_FLAVORS, []);
-  const shakeItems = useMemo(() => SHAKE_FLAVORS, []);
+  const coffeeItems = useMemo(() => ALL_MENU_ITEMS.filter(item => item.category === ItemCategory.COFFEE), []);
+  const shakeItems = useMemo(() => ALL_MENU_ITEMS.filter(item => item.category === ItemCategory.SHAKES), []);
   const cartTotal = useMemo(() => cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0), [cartItems]);
 
 
@@ -122,7 +126,7 @@ export default function HomePage() {
               
               <section id="menu">
                 <div>
-                  <h2 className="text-3xl font-bold mb-6 text-primary border-b-2 border-primary pb-2">{MENU_CATEGORIES.COFFEE}</h2>
+                  <h2 className="text-3xl font-bold mb-6 text-primary border-b-2 border-primary pb-2">{MENU_CATEGORIES_MAP.COFFEE}</h2>
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                     {coffeeItems.map(item => (
                       <MenuItemCard key={item.id} item={item} onAddToCart={handleAddToCart} />
@@ -131,7 +135,7 @@ export default function HomePage() {
                 </div>
 
                 <div className="mt-12">
-                  <h2 className="text-3xl font-bold mb-6 text-primary border-b-2 border-primary pb-2">{MENU_CATEGORIES.SHAKES}</h2>
+                  <h2 className="text-3xl font-bold mb-6 text-primary border-b-2 border-primary pb-2">{MENU_CATEGORIES_MAP.SHAKES}</h2>
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                     {shakeItems.map(item => (
                       <MenuItemCard key={item.id} item={item} onAddToCart={handleAddToCart} />

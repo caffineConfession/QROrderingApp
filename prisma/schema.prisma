@@ -9,70 +9,77 @@ generator client {
 }
 
 model AdminUser {
-  id              String        @id @default(cuid())
-  email           String        @unique
-  hashedPassword  String // In a real app, this would be a hash, not related to JWT_SECRET_KEY
+  id              String    @id @default(cuid())
+  email           String    @unique
+  passwordHash    String // In a real app, this should be a securely hashed password
   role            AdminRole
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  ordersProcessed Order[]       @relation("ProcessedOrders")
-  ordersTaken     Order[]       @relation("TakenOrders")
-  sessions        AdminSession[]
-}
-
-// Optional: For more robust session management if storing sessions in DB
-model AdminSession {
-  id        String     @id @default(cuid())
-  sid       String     @unique // Session ID
-  data      String     // Session data
-  expiresAt DateTime
-  adminUser AdminUser? @relation(fields: [adminUserId], references: [id])
-  adminUserId String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  ordersProcessed Order[]   @relation("ProcessedOrders")
+  ordersTaken     Order[]   @relation("TakenOrders")
 }
 
 model Product {
-  id          String       @id @default(cuid())
-  name        String       // e.g., Vanilla, Chocolate Shake
-  category    String       // e.g., Blended Cold Coffee, Shakes (matches MENU_CATEGORIES values)
-  imageHint   String       // For placeholder images
-  // Prices will be determined by category and serving type, possibly from constants or a related Price model later
-  // basePrice   Float?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  orderItems  OrderItem[]
+  id            String       @id @default(cuid()) // Use cuid for products as well
+  name          String       // e.g., Vanilla, KitKat
+  category      ItemCategory // e.g., COFFEE, SHAKES
+  servingTypes  Json         // Store available serving types like ["Cone", "Cup"]
+  prices        Json         // Store prices like {"Cone": 130, "Cup": 150}
+  imageHint     String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  orderItems    OrderItem[]
+  menuItems     MenuItem[]   @relation("ProductMenuItems") // Relation to a new MenuItem model for display
 }
 
-model Order {
-  id              String      @id @default(cuid())
-  customerName    String?     // Optional for quick orders, but good for manual entry
-  customerPhone   String?
-  customerEmail   String?     // Optional
-  totalAmount     Float
-  status          OrderStatus // e.g., PENDING, RECEIVED, PREPARING, COMPLETED, DELIVERED, CANCELLED
-  paymentMethod   PaymentType // e.g., CASH, UPI, RAZORPAY_ONLINE
-  paymentConfirmed Boolean    @default(false) // True if cash received or UPI confirmed
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-  items           OrderItem[]
+// New MenuItem for easier menu management if product details get complex
+model MenuItem {
+  id          String      @id @default(cuid())
+  productId   String
+  product     Product     @relation("ProductMenuItems", fields: [productId], references: [id])
+  displayName String      // e.g., "Vanilla Blended Cold Coffee"
+  category    ItemCategory
+  description String?
+  imageHint   String
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
 
-  processedBy   AdminUser?   @relation("ProcessedOrders", fields: [processedById], references: [id])
-  processedById String?
-  takenBy       AdminUser?   @relation("TakenOrders", fields: [takenById], references: [id]) // For manual orders
-  takenById     String?
+
+model Order {
+  id                      String        @id @default(cuid())
+  customerName            String?
+  customerPhone           String?
+  customerEmail           String?       // For sending receipts from online orders
+  items                   OrderItem[]
+  totalAmount             Float
+  status                  OrderStatus   @default(AWAITING_PAYMENT_CONFIRMATION)
+  paymentMethod           PaymentMethod
+  paymentStatus           PaymentStatus @default(PENDING)
+  orderSource             OrderSource   @default(CUSTOMER_ONLINE) // Default for orders coming from main app
+  customizationNotes      String?       // General notes for the order, if any
+  createdAt               DateTime      @default(now())
+  updatedAt               DateTime      @updatedAt
+  processedBy             AdminUser?    @relation("ProcessedOrders", fields: [processedById], references: [id])
+  processedById           String?
+  takenBy                 AdminUser?    @relation("TakenOrders", fields: [takenById], references: [id]) // Admin who took a manual order
+  takenById               String?
 }
 
 model OrderItem {
-  id                String   @id @default(cuid())
-  order             Order    @relation(fields: [orderId], references: [id])
+  id                String            @id @default(cuid())
   orderId           String
-  product           Product  @relation(fields: [productId], references: [id])
-  productId         String
+  order             Order             @relation(fields: [orderId], references: [id])
+  productId         String            // Reference to the Product ID (e.g., from constants or Product table)
+  productName       String            // Store name at time of purchase for history
+  category          ItemCategory      // Store category at time of purchase
+  servingType       ItemServingType
   quantity          Int
-  priceAtPurchase   Float    // Price per unit at the time of order (accounts for serving type)
-  servingType       String   // e.g., "Cone", "Cup"
-  customizationNotes String?  // e.g., "sweet", "bitter", "normal"
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  priceAtPurchase   Float             // Price per unit at the time of purchase
+  customization     CustomizationType @default(normal)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
 }
 
 enum AdminRole {
@@ -81,17 +88,45 @@ enum AdminRole {
   BUSINESS_MANAGER
 }
 
+enum ItemCategory {
+  COFFEE
+  SHAKES
+}
+
+enum ItemServingType {
+  Cone
+  Cup
+}
+
+enum CustomizationType {
+  normal
+  sweet
+  bitter
+}
+
+enum PaymentMethod {
+  Cash
+  UPI
+  Razorpay // For online payments through customer app
+}
+
 enum OrderStatus {
-  PENDING_PAYMENT // For online orders before payment or cash orders before confirmation
-  RECEIVED        // Payment confirmed, ready for processing
+  AWAITING_PAYMENT_CONFIRMATION // For cash orders from customers, before staff confirms payment
+  PENDING_PREPARATION          // For online paid orders or manually confirmed cash orders, ready for kitchen
   PREPARING
   READY_FOR_PICKUP
-  COMPLETED       // Picked up / Delivered
+  COMPLETED                   // Formerly DELIVERED
   CANCELLED
 }
 
-enum PaymentType {
-  CASH
-  UPI
-  RAZORPAY_ONLINE // For customer-facing app's online payments
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum OrderSource {
+  CUSTOMER_ONLINE // Order placed by customer via main app
+  STAFF_MANUAL    // Order placed by staff via admin panel
 }
