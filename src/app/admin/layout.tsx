@@ -1,7 +1,7 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Home, ShoppingBag, BarChart3, LogOut, Users, Coffee } from "lucide-react";
+import { Home, ShoppingBag, BarChart3, Users, Coffee } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -33,7 +33,11 @@ const NavLink: React.FC<{ href: string; icon: React.ElementType; label: string; 
   if (roles && sessionRole && !roles.includes(sessionRole)) {
     return null;
   }
-  const isActive = currentPath === href || (href !== "/admin/dashboard" && currentPath.startsWith(href));
+  // Note: currentPath logic might need improvement for dynamic active states across all admin pages.
+  // For now, it's a simplified check. A more robust solution might involve using `next/headers`
+  // or passing the pathname explicitly if possible in server components.
+  const isActive = currentPath === href || (currentPath.startsWith(href) && href !== "/admin/dashboard");
+
   return (
     <Link href={href} legacyBehavior>
       <a
@@ -53,14 +57,19 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
   const sessionCookie = cookies().get("admin_session")?.value;
   const session = await decryptSession(sessionCookie);
 
+  // If there's no session role, it implies the middleware allowed access to a public admin page (i.e., /admin/login).
+  // In this case, just render the children (the login page itself) without the admin shell.
+  // The login page is designed to be standalone.
+  // The middleware protects other admin pages.
   if (!session?.role) {
-    return redirect("/admin/login");
+    return <>{children}</>;
   }
   
-  // This is a placeholder for currentPath, in a real app you'd use usePathname from next/navigation
-  // but that's client-side. For server layout, we might not have precise current path or need a different approach.
-  // For now, we'll just pass a base path.
-  const currentPath = "/admin/dashboard"; // Simplified for server component
+  // If a session and role exist, proceed to render the full admin layout.
+  // The `pathname` from `next/headers` could be used here for more accurate active link styling.
+  // For now, we'll use a simplified currentPath for NavLink.
+  // Example: const pathname = headers().get('x-next-pathname') || "/admin/dashboard";
+  const currentPath = "/admin/dashboard"; // Placeholder, ideally get current path dynamically
 
   return (
     <div className="grid min-h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
@@ -106,7 +115,7 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
               <Button variant="secondary" size="icon" className="rounded-full">
                 <Avatar>
                   <AvatarImage src="https://placehold.co/40x40.png" alt="@admin" data-ai-hint="user avatar" />
-                  <AvatarFallback>{session.role ? session.role.substring(0,1) : 'A'}</AvatarFallback>
+                  <AvatarFallback>{session.role ? session.role.substring(0,1).toUpperCase() : 'A'}</AvatarFallback>
                 </Avatar>
                 <span className="sr-only">Toggle user menu</span>
               </Button>
@@ -129,4 +138,3 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
     </div>
   );
 }
-
