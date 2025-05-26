@@ -1,14 +1,13 @@
 
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableCaption } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ShoppingBag, RefreshCw } from "lucide-react";
-import { getProcessableOrdersAction, type ProcessableOrder } from "./actions";
+import { ShoppingBag, AlertCircle } from "lucide-react"; // Added AlertCircle for error display
+import { getProcessableOrdersAction } from "./actions"; // Removed type ProcessableOrder as it's inferred
 import OrderStatusUpdater from "./OrderStatusUpdater";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import Link from "next/link"; // For potential refresh button
+import { OrderStatus } from "@prisma/client"; // Explicitly import OrderStatus from Prisma Client
 
 export const dynamic = 'force-dynamic'; // Ensure data is fetched on each request
 
@@ -21,10 +20,6 @@ export default async function AdminOrdersPage() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center"><ShoppingBag className="mr-3 h-6 w-6 text-primary" />Manage Orders</CardTitle>
-            {/* Manual refresh button could be useful if revalidatePath isn't instant enough for UX */}
-            {/* <form action={async () => { "use server"; revalidatePath("/admin/orders"); }}>
-              <Button variant="outline" size="sm"><RefreshCw className="mr-2 h-4 w-4"/>Refresh</Button>
-            </form> */}
           </div>
           <CardDescription>View, process, and track customer orders that are paid and ready for action.</CardDescription>
         </CardHeader>
