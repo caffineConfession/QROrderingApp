@@ -2,9 +2,9 @@
 "use client";
 
 import { useState, useMemo } from 'react';
-import type { MenuItem, ItemServingType, CartItem, CustomerDetails, PaymentMethod } from '@/types';
-import { MENU_CATEGORIES_MAP, ItemCategory } from '@/types'; // Updated import path, Added ItemCategory
-import { ALL_MENU_ITEMS } from '@/lib/constants'; // Changed from COFFEE_FLAVORS, SHAKE_FLAVORS, PRICES
+import type { ProductMenuItem, ItemServingType, CartItemClient, CustomerDetails, PaymentMethod } from '@/types';
+import { MENU_CATEGORIES_MAP, ItemCategory } from '@/types'; 
+import { ALL_MENU_ITEMS } from '@/lib/constants'; 
 import Header from '@/components/Header';
 import MenuItemCard from '@/components/MenuItemCard';
 import OrderCart from '@/components/OrderCart';
@@ -17,26 +17,31 @@ import { AlertCircle, CheckCircle2 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import { submitCustomerOrderAction } from '@/app/actions/order-actions';
 
 
 type AppState = "menu" | "checkout" | "confirmation";
 
 export default function HomePage() {
-  const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [cartItems, setCartItems] = useState<CartItemClient[]>([]);
   const [appState, setAppState] = useState<AppState>("menu");
-  const [orderDetails, setOrderDetails] = useState<any>(null); // Store confirmed order details
+  const [orderDetails, setOrderDetails] = useState<any>(null); 
   const { toast } = useToast();
+  const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
 
-  const handleAddToCart = (item: MenuItem, servingType: ItemServingType, price: number) => {
-    const cartItemId = `${item.id}-${servingType}`;
+  const handleAddToCart = (item: ProductMenuItem, servingType: ItemServingType, price: number) => {
+    const cartItemId = `${item.id}-${servingType}-${Date.now()}`; // Ensure unique ID if customized items are separate
     setCartItems(prevItems => {
-      const existingItem = prevItems.find(ci => ci.cartItemId === cartItemId);
-      if (existingItem) {
-        return prevItems.map(ci =>
-          ci.cartItemId === cartItemId ? { ...ci, quantity: ci.quantity + 1 } : ci
+      const existingItemIndex = prevItems.findIndex(
+        ci => ci.id === item.id && ci.servingType === servingType && ci.customization === "normal" // Check for existing default item
+      );
+      if (existingItemIndex > -1) {
+        return prevItems.map((ci, index) =>
+          index === existingItemIndex ? { ...ci, quantity: ci.quantity + 1 } : ci
         );
       }
-      return [...prevItems, { ...item, servingType, quantity: 1, price, cartItemId }];
+      // Add as new if not found or if customized (customized items could be treated as distinct cart entries if needed later)
+      return [...prevItems, { ...item, servingType, quantity: 1, price, cartItemId, customization: "normal" }];
     });
     toast({
       title: "Added to cart!",
@@ -81,31 +86,57 @@ export default function HomePage() {
     setAppState("checkout");
   };
 
-  const handleSubmitOrder = (customerDetails: CustomerDetails, paymentMethod: PaymentMethod) => {
-    // In a real app, this would call a server action to save the order to the DB
-    // and handle payment processing (e.g., redirect to Razorpay).
-    // For now, it's a mock submission.
+  const handleSubmitOrder = async (customerDetails: CustomerDetails, paymentMethod: PaymentMethod.Cash | PaymentMethod.Razorpay) => {
+    setIsSubmittingOrder(true);
     const totalAmount = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    const finalOrder = {
-      ...customerDetails,
+    
+    const orderData = {
+      customerDetails,
       items: cartItems,
       totalAmount,
       paymentMethod,
-      orderId: `CAFFICO-${Date.now()}`, // Mock order ID
-      timestamp: new Date(),
     };
-    
-    console.log("Order Submitted:", finalOrder);
-    setOrderDetails(finalOrder); // Save order details for confirmation page
-    setAppState("confirmation");
-    setCartItems([]); // Clear cart
 
-    // Mock sending receipt
-    toast({
-      title: "Order Placed Successfully!",
-      description: `Your order #${finalOrder.orderId} has been placed. A receipt will be sent to ${customerDetails.email}.`,
-      duration: 7000,
-    });
+    try {
+      const result = await submitCustomerOrderAction(orderData);
+      if (result.success && result.orderId) {
+        const finalOrder = {
+          ...customerDetails,
+          items: cartItems,
+          totalAmount,
+          paymentMethod: result.paymentMethod,
+          orderId: result.orderId,
+          timestamp: new Date(),
+        };
+        setOrderDetails(finalOrder);
+        setAppState("confirmation");
+        setCartItems([]); 
+        toast({
+          title: "Order Placed Successfully!",
+          description: `Your order #${finalOrder.orderId} has been placed. ${
+            finalOrder.paymentMethod === "Cash" 
+            ? "Please pay at the counter." 
+            : `A receipt will be sent to ${customerDetails.email}.`
+          }`,
+          duration: 7000,
+        });
+      } else {
+        toast({
+          title: "Order Submission Failed",
+          description: result.error || "Could not place your order. Please try again.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Error submitting order:", error);
+      toast({
+        title: "Order Error",
+        description: "An unexpected error occurred while placing your order.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmittingOrder(false);
+    }
   };
 
   const coffeeItems = useMemo(() => ALL_MENU_ITEMS.filter(item => item.category === ItemCategory.COFFEE), []);
@@ -162,6 +193,7 @@ export default function HomePage() {
               totalAmount={cartTotal}
               onSubmitOrder={handleSubmitOrder}
               onBackToCart={() => setAppState("menu")}
+              isSubmitting={isSubmittingOrder}
             />
           </div>
         )}
@@ -175,26 +207,42 @@ export default function HomePage() {
               </CardHeader>
               <CardContent className="space-y-4 text-left">
                 <p className="text-lg">Your order <span className="font-semibold text-accent">#{orderDetails.orderId}</span> has been placed successfully.</p>
-                <p>A confirmation email with your receipt has been sent to <span className="font-semibold text-accent">{orderDetails.email}</span>.</p>
+                
                 {orderDetails.paymentMethod === "Cash" && (
                   <Alert className="mt-4 bg-yellow-50 border-yellow-300">
                     <AlertCircle className="h-4 w-4 text-yellow-600" />
-                    <AlertTitle className="text-yellow-700">Cash Payment</AlertTitle>
+                    <AlertTitle className="text-yellow-700">Cash Payment Selected</AlertTitle>
                     <AlertDescription className="text-yellow-600">
                       Please pay ₹{orderDetails.totalAmount.toFixed(2)} in cash at the counter. Your order will be processed upon payment confirmation.
                     </AlertDescription>
                   </Alert>
                 )}
+                 {orderDetails.paymentMethod === "Razorpay" && (
+                  <Alert className="mt-4 bg-blue-50 border-blue-300">
+                    <AlertCircle className="h-4 w-4 text-blue-600" />
+                    <AlertTitle className="text-blue-700">Online Payment Pending</AlertTitle>
+                    <AlertDescription className="text-blue-600">
+                      Your order is awaiting payment confirmation via Razorpay. If you haven't completed the payment, please do so.
+                       A receipt will be sent to <span className="font-semibold text-accent">{orderDetails.email}</span> upon successful payment.
+                    </AlertDescription>
+                  </Alert>
+                )}
+                 {orderDetails.paymentMethod !== "Cash" && orderDetails.paymentMethod !== "Razorpay" && (
+                    <p>A confirmation email with your receipt will be sent to <span className="font-semibold text-accent">{orderDetails.email}</span>.</p>
+                 )}
+
                 <Separator className="my-6"/>
                 <h3 className="text-xl font-semibold mb-2">Order Summary:</h3>
-                <ul className="space-y-2 max-h-60 overflow-y-auto pr-2">
-                  {orderDetails.items.map((item: CartItem) => (
-                    <li key={item.cartItemId} className="flex justify-between text-sm p-2 bg-muted/50 rounded-md">
-                      <span>{item.name} ({item.servingType}) x {item.quantity}</span>
-                      <span>₹{(item.price * item.quantity).toFixed(2)}</span>
-                    </li>
-                  ))}
-                </ul>
+                <ScrollArea className="max-h-60 pr-2">
+                  <ul className="space-y-2">
+                    {orderDetails.items.map((item: CartItemClient) => (
+                      <li key={item.cartItemId} className="flex justify-between text-sm p-2 bg-muted/50 rounded-md">
+                        <span>{item.name} ({item.servingType}) x {item.quantity}</span>
+                        <span>₹{(item.price * item.quantity).toFixed(2)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </ScrollArea>
                 <div className="flex justify-between text-lg font-bold pt-2 border-t mt-2">
                   <span>Total:</span>
                   <span>₹{orderDetails.totalAmount.toFixed(2)}</span>

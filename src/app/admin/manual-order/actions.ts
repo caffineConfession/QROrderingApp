@@ -2,15 +2,13 @@
 "use server";
 
 import prisma from "@/lib/prisma";
-import type { ManualOrderSubmitData } from "@/types";
+import type { ManualOrderSubmitData, PendingCashOrderView } from "@/types";
 import { OrderStatus, PaymentStatus, OrderSource, PaymentMethod, ItemCategory } from "@/types";
 import { cookies } from "next/headers";
 import { decryptSession } from "@/lib/session";
 import { revalidatePath } from "next/cache";
-import { COFFEE_FLAVORS_BASE, SHAKE_FLAVORS_BASE } from '@/lib/constants'; // Ensure correct import path
+import { COFFEE_FLAVORS_BASE, SHAKE_FLAVORS_BASE } from '@/lib/constants';
 
-// Helper to get product info - needed for the server action.
-// This should match the structure in constants.ts
 const ALL_MENU_ITEMS_FLAT = [
   ...COFFEE_FLAVORS_BASE.map(item => ({ ...item, category: ItemCategory.COFFEE })),
   ...SHAKE_FLAVORS_BASE.map(item => ({ ...item, category: ItemCategory.SHAKES })),
@@ -37,23 +35,21 @@ export async function createManualOrderAction(
         customerName: data.customerName || null,
         customerPhone: data.customerPhone || null,
         totalAmount: data.totalAmount,
-        paymentMethod: data.paymentMethod, // Cash or UPI
-        paymentStatus: PaymentStatus.PAID, // Assume payment confirmed on spot for manual orders
-        status: OrderStatus.PENDING_PREPARATION, // Ready for kitchen
+        paymentMethod: data.paymentMethod, 
+        paymentStatus: PaymentStatus.PAID, 
+        status: OrderStatus.PENDING_PREPARATION, 
         orderSource: OrderSource.STAFF_MANUAL,
-        takenById: session.userId, // Link to the admin who took the order
+        takenById: session.userId, 
         items: {
           create: data.items.map((item) => {
-            // Find product details from constants to get category and name
             const productInfo = ALL_MENU_ITEMS_FLAT.find(p => p.id === item.productId);
             if (!productInfo) {
-                // This should ideally not happen if product IDs are validated client-side
                 throw new Error(`Product with ID ${item.productId} not found.`);
             }
             return {
               productId: item.productId,
               productName: productInfo.name,
-              category: productInfo.category, // This should be the enum value, e.g. ItemCategory.COFFEE
+              category: productInfo.category,
               servingType: item.servingType,
               quantity: item.quantity,
               priceAtPurchase: item.priceAtPurchase,
@@ -64,9 +60,8 @@ export async function createManualOrderAction(
       },
     });
 
-    // Optionally, revalidate paths if you have a live order feed somewhere
-    revalidatePath("/admin/orders"); // If order processors see this list
-    revalidatePath("/admin/manual-order"); // To clear any forms or update UI
+    revalidatePath("/admin/orders"); 
+    revalidatePath("/admin/manual-order"); 
 
     return { success: true, orderId: newOrder.id };
   } catch (error) {
@@ -79,32 +74,45 @@ export async function createManualOrderAction(
 }
 
 
-// Placeholder function to simulate fetching pending cash orders
-// In a real app, this would query the database for orders with
-// orderSource: CUSTOMER_ONLINE, paymentMethod: Cash, paymentStatus: PENDING
-export async function getPendingCashOrdersAction(): Promise<{ success: boolean; orders?: any[]; error?: string; }> {
-  // MOCK DATA for now
-  // This should query:
-  // prisma.order.findMany({
-  //   where: {
-  //     paymentMethod: PaymentMethod.Cash,
-  //     paymentStatus: PaymentStatus.PENDING,
-  //     orderSource: OrderSource.CUSTOMER_ONLINE,
-  //     status: OrderStatus.AWAITING_PAYMENT_CONFIRMATION,
-  //   },
-  //   select: { id: true, customerName: true, customerPhone: true, totalAmount: true, createdAt: true, items: { select: { productName: true, quantity: true, servingType: true, customization: true}}},
-  //   orderBy: { createdAt: 'asc' }
-  // })
-  await new Promise(resolve => setTimeout(resolve, 500)); // Simulate network delay
+export async function getPendingCashOrdersAction(): Promise<{ success: boolean; orders?: PendingCashOrderView[]; error?: string; }> {
   try {
-    // MOCK IMPLEMENTATION
-    const mockOrders = [
-      { id: "MOCK_CASH_001", customerName: "Mock Customer Cash", customerPhone: "9876543210", totalAmount: 280, orderDate: new Date(Date.now() - 1000 * 60 * 15) , itemsSummary: "Vanilla Coffee (Cup) x 1, Oreo Shake (Cone) x 1" },
-      { id: "MOCK_CASH_002", customerName: "Mock Cash Buyer", customerPhone: "9876500000", totalAmount: 150, orderDate: new Date(Date.now() - 1000 * 60 * 5), itemsSummary: "Original Coffee (Cup) x 1" },
-    ];
+    const pendingOrders = await prisma.order.findMany({
+      where: {
+        paymentMethod: PaymentMethod.Cash,
+        paymentStatus: PaymentStatus.PENDING,
+        orderSource: OrderSource.CUSTOMER_ONLINE,
+        status: OrderStatus.AWAITING_PAYMENT_CONFIRMATION,
+      },
+      select: { 
+        id: true, 
+        customerName: true, 
+        customerPhone: true, 
+        totalAmount: true, 
+        createdAt: true, 
+        items: { 
+          select: { 
+            productName: true, 
+            quantity: true, 
+            servingType: true, 
+            customization: true 
+          }
+        }
+      },
+      orderBy: { createdAt: 'asc' }
+    });
+
+    const formattedOrders: PendingCashOrderView[] = pendingOrders.map(order => ({
+      id: order.id,
+      customerName: order.customerName,
+      customerPhone: order.customerPhone,
+      totalAmount: order.totalAmount,
+      orderDate: order.createdAt,
+      itemsSummary: order.items.map(item => `${item.productName} (${item.servingType}) x ${item.quantity}`).join(', '),
+    }));
+
     return {
       success: true,
-      orders: mockOrders
+      orders: formattedOrders
     };
   } catch (error) {
     console.error("Error fetching pending cash orders:", error);
@@ -121,32 +129,38 @@ export async function confirmCashPaymentAction(orderId: string): Promise<{ succe
     }
 
     try {
-        const updatedOrder = await prisma.order.updateMany({ // use updateMany if you are not sure if the order exists or want to avoid error if it doesn't
-            where: {
+        const orderToUpdate = await prisma.order.findUnique({
+            where: { 
               id: orderId,
-              // orderSource: OrderSource.CUSTOMER_ONLINE, // Only online customer orders are confirmed this way
               paymentMethod: PaymentMethod.Cash,
               paymentStatus: PaymentStatus.PENDING,
+              // orderSource: OrderSource.CUSTOMER_ONLINE, // Allow confirming for any pending cash order initially
               status: OrderStatus.AWAITING_PAYMENT_CONFIRMATION,
+            }
+        });
+
+        if (!orderToUpdate) {
+            const orderExists = await prisma.order.findUnique({ where: { id: orderId }});
+            if (!orderExists) return { success: false, error: "Order not found." };
+            if (orderExists.paymentStatus === PaymentStatus.PAID) return { success: false, error: "Order already paid."};
+            if (orderExists.status !== OrderStatus.AWAITING_PAYMENT_CONFIRMATION) return { success: false, error: `Order status is ${orderExists.status}, cannot confirm payment.`};
+            return { success: false, error: "Order not eligible for payment confirmation." };
+        }
+        
+        await prisma.order.update({
+            where: {
+              id: orderId,
             },
             data: {
                 paymentStatus: PaymentStatus.PAID,
-                status: OrderStatus.PENDING_PREPARATION, // Now ready for the kitchen
-                // processedById: session.userId, // Or a different field for who confirmed payment
+                status: OrderStatus.PENDING_PREPARATION, 
+                processedById: session.userId, // Log who confirmed the payment
                 updatedAt: new Date(),
             },
         });
 
-        if (updatedOrder.count === 0) {
-            // Check if the order exists but was already processed or not eligible
-            const orderExists = await prisma.order.findUnique({ where: { id: orderId }});
-            if (!orderExists) return { success: false, error: "Order not found." };
-            if (orderExists.paymentStatus === PaymentStatus.PAID) return { success: false, error: "Order already paid."};
-            return { success: false, error: "Order not eligible for payment confirmation or already processed." };
-        }
-
-        revalidatePath("/admin/manual-order"); // To refresh the list of pending orders
-        revalidatePath("/admin/orders"); // So order processors see it
+        revalidatePath("/admin/manual-order"); 
+        revalidatePath("/admin/orders"); 
 
         return { success: true };
     } catch (error) {

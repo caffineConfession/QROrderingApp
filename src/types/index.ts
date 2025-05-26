@@ -14,7 +14,7 @@ export enum AdminRole {
   ORDER_PROCESSOR = "ORDER_PROCESSOR",
   BUSINESS_MANAGER = "BUSINESS_MANAGER",
 }
-export const ADMIN_ROLES = AdminRole; // Alias for easier usage
+export const ADMIN_ROLES = AdminRole; 
 
 export enum ItemCategory {
   COFFEE = "COFFEE",
@@ -34,47 +34,48 @@ export enum CustomizationType {
 
 export enum PaymentMethod {
   Cash = "Cash",
-  UPI = "UPI",
-  Razorpay = "Razorpay",
+  UPI = "UPI", // Used for Manual Orders by staff
+  Razorpay = "Razorpay", // Used by Customers Online
 }
 
 export enum OrderStatus {
-  AWAITING_PAYMENT_CONFIRMATION = "AWAITING_PAYMENT_CONFIRMATION",
-  PENDING_PREPARATION = "PENDING_PREPARATION",
-  PREPARING = "PREPARING",
-  READY_FOR_PICKUP = "READY_FOR_PICKUP",
-  COMPLETED = "COMPLETED",
-  CANCELLED = "CANCELLED",
+  AWAITING_PAYMENT_CONFIRMATION = "AWAITING_PAYMENT_CONFIRMATION", // Customer online cash order before payment
+  PENDING_PREPARATION = "PENDING_PREPARATION", // Payment confirmed, ready for kitchen
+  PREPARING = "PREPARING", // Kitchen is making the order
+  READY_FOR_PICKUP = "READY_FOR_PICKUP", // Order is made, customer can collect
+  COMPLETED = "COMPLETED", // Order collected/delivered
+  CANCELLED = "CANCELLED", // Order cancelled
 }
 
 export enum PaymentStatus {
-  PENDING = "PENDING",
-  PAID = "PAID",
-  FAILED = "FAILED",
-  REFUNDED = "REFUNDED",
+  PENDING = "PENDING", // Payment initiated but not confirmed (e.g., Cash orders, or online payment not yet verified)
+  PAID = "PAID", // Payment successfully confirmed
+  FAILED = "FAILED", // Payment attempt failed
+  REFUNDED = "REFUNDED", // Payment was refunded
 }
 
 export enum OrderSource {
-  CUSTOMER_ONLINE = "CUSTOMER_ONLINE",
-  STAFF_MANUAL = "STAFF_MANUAL",
+  CUSTOMER_ONLINE = "CUSTOMER_ONLINE", // Order placed by customer via the app/website
+  STAFF_MANUAL = "STAFF_MANUAL", // Order placed manually by staff
 }
 
 
 // App-specific types
-export interface ProductMenuItem { // Used for displaying items to select
-  id: string; // This will be the actual Product ID from the database or constants
+export interface ProductMenuItem { 
+  id: string; 
   name: string;
-  category: ItemCategory; // Enum
-  categoryDisplay: ItemCategoryValue; // User-friendly display name
+  category: ItemCategory; 
+  categoryDisplay: ItemCategoryValue; 
   imageHint: string;
-  prices: Record<ItemServingType, number>; // Prices for "Cone", "Cup"
+  prices: Record<ItemServingType, number>; 
 }
 
+// Represents an item in the customer's shopping cart on the client-side
 export interface CartItemClient extends ProductMenuItem {
-  cartItemId: string; // Unique ID for the cart instance (e.g., `${productId}-${servingType}-${timestamp}`)
+  cartItemId: string; 
   servingType: ItemServingType;
   quantity: number;
-  price: number; // price per unit for this specific serving type
+  price: number; // price per unit for this specific serving type at time of adding to cart
   customization: CustomizationType;
 }
 
@@ -85,11 +86,12 @@ export interface CustomerDetails {
   email: string;
 }
 
-export interface OrderToSubmit { // From customer app
+// Data structure for when a customer submits their order from the main app
+export interface OrderToSubmit { 
   customerDetails: CustomerDetails;
-  items: {
+  items: { // This structure needs to map from CartItemClient
     productId: string;
-    name: string; // name at time of purchase
+    name: string; 
     category: ItemCategory;
     servingType: ItemServingType;
     quantity: number;
@@ -97,32 +99,32 @@ export interface OrderToSubmit { // From customer app
     customization: CustomizationType;
   }[];
   totalAmount: number;
-  paymentMethod: PaymentMethod; // Cash or Razorpay
-  // If Razorpay, payment gateway details might be handled separately or included
+  paymentMethod: PaymentMethod.Cash | PaymentMethod.Razorpay; // Only these are available to customers online
 }
 
 
 // For client-side manual order creation by staff
 export interface ManualOrderCartItem {
-  cartItemId: string; // Unique client-side ID for this cart entry
-  productId: string; // Actual product ID
+  cartItemId: string; 
+  productId: string; 
   name: string;
   category: ItemCategory;
   servingType: ItemServingType;
-  price: number; // price for this specific serving type
+  price: number; 
   quantity: number;
   customization: CustomizationType;
   imageHint: string;
 }
 
+// Data structure for when staff submits a manual order
 export interface ManualOrderSubmitData {
   customerName: string;
   customerPhone: string;
-  paymentMethod: PaymentMethod; // Cash or UPI for manual orders
+  paymentMethod: PaymentMethod.Cash | PaymentMethod.UPI; // Staff can take UPI or Cash
   items: {
-    productId: string; // Product ID from constants/DB
+    productId: string; 
     quantity: number;
-    priceAtPurchase: number; // Price for the chosen serving type
+    priceAtPurchase: number; 
     servingType: ItemServingType;
     customization: CustomizationType;
   }[];
@@ -137,12 +139,12 @@ export interface AdminUser {
 }
 
 
-// Simplified Order type for displaying pending cash payments
+// Simplified Order type for displaying pending cash payments on manual order page
 export interface PendingCashOrderView {
-  id: string; // Order ID
+  id: string; 
   customerName?: string | null;
   customerPhone?: string | null;
   totalAmount: number;
   orderDate: Date;
-  itemsSummary: string; // e.g., "Vanilla Coffee (Cup) x 1, Chocolate Shake (Cone) x 2"
+  itemsSummary: string; 
 }
