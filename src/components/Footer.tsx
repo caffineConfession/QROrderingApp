@@ -23,7 +23,7 @@ export default function Footer() {
           <div>
             <h3 className="text-lg font-semibold mb-3">Connect With Us</h3>
             <a
-              href="https://www.instagram.com/caffico"
+              href="https://www.instagram.com/reel/DI9Ez9Qhqh2/"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center text-sm text-muted-foreground hover:text-primary transition-colors"
