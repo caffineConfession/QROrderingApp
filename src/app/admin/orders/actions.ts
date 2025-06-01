@@ -28,9 +28,6 @@ export async function getProcessableOrdersAction(): Promise<{
   try {
     const orders = await prisma.order.findMany({
       where: {
-        // Fetch orders that are paid and not yet completed or cancelled
-        // PENDING_PREPARATION, PREPARING, READY_FOR_PICKUP
-        // Or orders awaiting payment confirmation if we want to show them differently (but this page focuses on 'processable')
         paymentStatus: PaymentStatus.PAID, 
         status: {
           in: [
@@ -51,11 +48,13 @@ export async function getProcessableOrdersAction(): Promise<{
   } catch (error) {
     console.error("Error fetching processable orders:", error);
      if (error instanceof prisma.PrismaClientKnownRequestError) {
-      // Log more specific Prisma error for server-side debugging
       console.error("Prisma Error Code:", error.code);
       console.error("Prisma Error Message:", error.message);
+      return { success: false, error: `Failed to fetch orders. Database error: ${error.message}` };
+    } else if (error instanceof Error) {
+      return { success: false, error: `Failed to fetch orders: ${error.message}` };
     }
-    return { success: false, error: "Failed to fetch orders." };
+    return { success: false, error: "Failed to fetch orders due to an unexpected error." };
   }
 }
 
@@ -84,35 +83,32 @@ export async function updateOrderStatusAction(
     const result = await prisma.$transaction(async (tx) => {
       const order = await tx.order.findUnique({ 
         where: { id: orderId },
-        include: { items: true } // Include items for stock check if moving to COMPLETED
+        include: { items: true } 
       });
 
       if (!order) {
         throw new Error("Order not found.");
       }
 
-      // Validate status transitions
       if (order.status === OrderStatus.PENDING_PREPARATION && newStatus !== OrderStatus.PREPARING && newStatus !== OrderStatus.CANCELLED) {
           throw new Error(`Cannot change status from ${order.status} to ${newStatus}. Expected PREPARING or CANCELLED.`);
       }
       if (order.status === OrderStatus.PREPARING && newStatus !== OrderStatus.READY_FOR_PICKUP && newStatus !== OrderStatus.CANCELLED) {
           throw new Error(`Cannot change status from ${order.status} to ${newStatus}. Expected READY_FOR_PICKUP or CANCELLED.`);
       }
-      if (order.status === OrderStatus.READY_FOR_PICKUP && newStatus !== OrderStatus.COMPLETED && newStatus !== OrderStatus.CANCELLED) { // Allow cancellation from Ready for pickup
+      if (order.status === OrderStatus.READY_FOR_PICKUP && newStatus !== OrderStatus.COMPLETED && newStatus !== OrderStatus.CANCELLED) { 
           throw new Error(`Cannot change status from ${order.status} to ${newStatus}. Expected COMPLETED or CANCELLED.`);
       }
       if (order.status === OrderStatus.COMPLETED || order.status === OrderStatus.CANCELLED) {
           throw new Error(`Order is already ${order.status} and cannot be changed.`);
       }
-
-      // If moving to COMPLETED, check and deduct stock
+      
       const productIdsToRevalidate = new Set<string>();
       if (newStatus === OrderStatus.COMPLETED) {
         if (!order.items || order.items.length === 0) {
           throw new Error("Order has no items to fulfill.");
         }
 
-        // 1. Sufficient Stock Check
         for (const item of order.items) {
           const menuItem = await tx.menuItem.findUnique({
             where: { 
@@ -132,7 +128,6 @@ export async function updateOrderStatusAction(
           }
         }
 
-        // 2. Deduct Stock and Update Availability
         for (const item of order.items) {
           const servingType = item.servingType as PrismaItemServingType;
           const updatedMenuItem = await tx.menuItem.update({
@@ -168,7 +163,6 @@ export async function updateOrderStatusAction(
         }
       }
 
-      // Update order status
       await tx.order.update({
         where: { id: orderId },
         data: {
@@ -194,14 +188,12 @@ export async function updateOrderStatusAction(
   } catch (error) {
     console.error("Error updating order status:", error);
     if (error instanceof Error) {
-        // Check for specific Prisma error related to stock (e.g., if a CHECK constraint was violated)
-        // Prisma's P2002 for unique constraint, P2025 for record not found during update, etc.
-        // A CHECK constraint violation (like stock < 0) might return a generic DB error code.
         if (error.message.includes("constraint") || error.message.toLowerCase().includes("stock")) { 
-             return { success: false, error: `Failed to update status: ${error.message}` }; // Pass more specific error
+             return { success: false, error: `Failed to update status: ${error.message}` };
         }
         return { success: false, error: `Failed to update status: ${error.message}` };
     }
     return { success: false, error: "Failed to update order status due to an unexpected error." };
   }
 }
+
