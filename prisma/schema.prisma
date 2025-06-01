@@ -1,79 +1,17 @@
 
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
   provider = "prisma-client-js"
 }
 
-model AdminUser {
-  id              String        @id @default(cuid())
-  email           String        @unique
-  passwordHash    String // In a real app, this would be a hash
-  role            AdminRole
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  processedOrders Order[]       @relation("ProcessedOrders")
-  takenOrders     Order[]       @relation("TakenOrders")
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
-model Product {
-  id            String       @id @default(cuid())
-  name          String
-  category      ItemCategory // COFFEE, SHAKES
-  imageHint     String?
-  pricesJson    Json // Store prices as JSON: { "Cone": 130, "Cup": 150 }
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-  orderItems    OrderItem[]  @relation("ProductOrderItems")
-  menuItems     MenuItem[]   @relation("ProductMenuItems") // Added missing back-relation
-}
-
-// This model might be redundant if Product serves as the single source of truth for menu items.
-// If MenuItem is purely for a different UI representation or some denormalization, it might be kept.
-model MenuItem { // For UI representation, linking to a Product
-  id          String    @id @default(cuid())
-  product     Product   @relation("ProductMenuItems", fields: [productId], references: [id])
-  productId   String
-  // servingType ItemServingType // Should be part of Product or OrderItem, not MenuItem representation
-  // price       Float           // Should be part of Product or OrderItem
-}
-
-model Order {
-  id                            String        @id @default(cuid())
-  customerName                  String?
-  customerPhone                 String?
-  customerEmail                 String?
-  totalAmount                   Float
-  paymentMethod                 PaymentMethod
-  paymentStatus                 PaymentStatus @default(PENDING)
-  status                        OrderStatus   @default(PENDING_PREPARATION) // Default for new paid/confirmed orders
-  orderSource                   OrderSource   @default(CUSTOMER_ONLINE)
-  createdAt                     DateTime      @default(now())
-  updatedAt                     DateTime      @updatedAt
-  items                         OrderItem[]
-  processedBy                   AdminUser?    @relation("ProcessedOrders", fields: [processedById], references: [id])
-  processedById                 String?
-  takenBy                       AdminUser?    @relation("TakenOrders", fields: [takenById], references: [id])
-  takenById     String?       // Admin who took a manual order or confirmed cash for online
-}
-
-model OrderItem {
-  id              String            @id @default(cuid())
-  order           Order             @relation(fields: [orderId], references: [id])
-  orderId         String
-  product         Product           @relation("ProductOrderItems", fields: [productId], references: [id])
-  productId       String            // Links to the actual product
-  productName     String            // Denormalized product name at time of order
-  category        ItemCategory      // Denormalized category at time of order
-  servingType     ItemServingType
-  quantity        Int
-  priceAtPurchase Float             // Price per unit at time of purchase
-  customization   CustomizationType @default(normal)
-}
-
+// Enums
 enum AdminRole {
   MANUAL_ORDER_TAKER
   ORDER_PROCESSOR
@@ -103,22 +41,97 @@ enum PaymentMethod {
 }
 
 enum OrderStatus {
-  AWAITING_PAYMENT_CONFIRMATION // Customer online cash order before payment confirmed by staff
-  PENDING_PREPARATION           // Payment confirmed, ready for kitchen
-  PREPARING                     // Kitchen is making the order
-  READY_FOR_PICKUP              // Order is made, customer can collect
-  COMPLETED                     // Order collected/delivered
-  CANCELLED                     // Order cancelled
+  AWAITING_PAYMENT_CONFIRMATION
+  PENDING_PREPARATION
+  PREPARING
+  READY_FOR_PICKUP
+  COMPLETED
+  CANCELLED
 }
 
 enum PaymentStatus {
-  PENDING  // Payment initiated but not confirmed
-  PAID     // Payment successfully confirmed
-  FAILED   // Payment attempt failed
-  REFUNDED // Payment was refunded
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
 }
 
 enum OrderSource {
-  CUSTOMER_ONLINE // Order placed by customer via the app/website
-  STAFF_MANUAL    // Order placed manually by staff
+  CUSTOMER_ONLINE
+  STAFF_MANUAL
+}
+
+// Models
+model AdminUser {
+  id           String    @id @default(cuid()) // Changed to CUID for new users, manual ones might be email for now
+  email        String    @unique
+  passwordHash String
+  role         AdminRole
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  ordersTaken  Order[]   @relation("OrderTakenBy")
+  ordersProcessed Order[] @relation("OrderProcessedBy")
+}
+
+model Product {
+  id            String       @id @default(cuid())
+  name          String
+  description   String?
+  category      ItemCategory
+  imageHint     String?
+  isAvailable   Boolean      @default(true) // New field
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  menuItems     MenuItem[]   @relation("ProductMenuItems")
+  orderItems    OrderItem[]  @relation("ProductOrderItems")
+}
+
+model MenuItem {
+  id            String          @id @default(cuid())
+  product       Product         @relation("ProductMenuItems", fields: [productId], references: [id], onDelete: Cascade)
+  productId     String
+  servingType   ItemServingType
+  price         Float
+  isAvailable   Boolean         @default(true) // New field
+  stockQuantity Int             @default(0)    // New field
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@unique([productId, servingType]) // Ensure a product can't have the same serving type twice
+}
+
+model Order {
+  id            String        @id @default(cuid())
+  customerName  String?
+  customerPhone String?
+  customerEmail String?
+  totalAmount   Float
+  paymentMethod PaymentMethod
+  paymentStatus PaymentStatus
+  status        OrderStatus
+  orderSource   OrderSource
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  
+  takenBy       AdminUser?    @relation("OrderTakenBy", fields: [takenById], references: [id])
+  takenById     String?       // This might store email for existing, or CUID for new
+  
+  processedBy   AdminUser?    @relation("OrderProcessedBy", fields: [processedById], references: [id])
+  processedById String?       // This might store email for existing, or CUID for new
+
+  items         OrderItem[]
+}
+
+model OrderItem {
+  id              String            @id @default(cuid())
+  order           Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId         String
+  product         Product           @relation("ProductOrderItems", fields: [productId], references: [id])
+  productId       String
+  productName     String // Denormalized for easier display on receipts/order summaries
+  category        ItemCategory // Denormalized
+  servingType     ItemServingType
+  quantity        Int
+  priceAtPurchase Float
+  customization   CustomizationType @default(normal)
 }

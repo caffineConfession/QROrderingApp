@@ -1,7 +1,7 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Home, ShoppingBag, BarChart3, Users, Coffee } from "lucide-react";
+import { Home, ShoppingBag, BarChart3, Users, Coffee, ListPlus, Package } from "lucide-react"; // Added Package
 import { Button } from "@/components/ui/button";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -34,9 +34,7 @@ const NavLink: React.FC<{ href: string; icon: React.ElementType; label: string; 
   if (roles && sessionRole && !roles.includes(sessionRole)) {
     return null;
   }
-  // Note: currentPath logic might need improvement for dynamic active states across all admin pages.
-  // For now, it's a simplified check. A more robust solution might involve using `next/headers`
-  // or passing the pathname explicitly if possible in server components.
+
   const isActive = currentPath === href || (currentPath.startsWith(href) && href !== "/admin/dashboard");
 
   return (
@@ -58,19 +56,15 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
   const sessionCookie = cookies().get("admin_session")?.value;
   const session = await decryptSession(sessionCookie);
 
-  // If there's no session role, it implies the middleware allowed access to a public admin page (i.e., /admin/login).
-  // In this case, just render the children (the login page itself) without the admin shell.
-  // The login page is designed to be standalone.
-  // The middleware protects other admin pages.
   if (!session?.role) {
     return <>{children}</>;
   }
   
-  // If a session and role exist, proceed to render the full admin layout.
-  // The `pathname` from `next/headers` could be used here for more accurate active link styling.
-  // For now, we'll use a simplified currentPath for NavLink.
-  // Example: const pathname = headers().get('x-next-pathname') || "/admin/dashboard";
-  const currentPath = "/admin/dashboard"; // Placeholder, ideally get current path dynamically
+  // For active link styling, ideally get current path dynamically e.g. using headers()
+  // const pathname = headers().get('x-next-pathname') || "/admin/dashboard";
+  // For simplicity in this example, we'll pass a placeholder.
+  // A better approach would be to use a client component context or usePathname hook for NavLink if it were client-side.
+  const currentPath = "/admin/dashboard"; // Placeholder for active state example
 
   return (
     <div className="grid min-h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
@@ -92,6 +86,9 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
                 <NavLink href="/admin/manual-order" icon={Users} label="Manual Order" currentPath={currentPath} roles={[ADMIN_ROLES.MANUAL_ORDER_TAKER, ADMIN_ROLES.BUSINESS_MANAGER]} sessionRole={session.role}/>
               }
               { session.role === ADMIN_ROLES.BUSINESS_MANAGER &&
+                <NavLink href="/admin/products" icon={Package} label="Menu Management" currentPath={currentPath} roles={[ADMIN_ROLES.BUSINESS_MANAGER]} sessionRole={session.role}/>
+              }
+              { session.role === ADMIN_ROLES.BUSINESS_MANAGER &&
                 <NavLink href="/admin/analytics" icon={BarChart3} label="Analytics" currentPath={currentPath} roles={[ADMIN_ROLES.BUSINESS_MANAGER]} sessionRole={session.role}/>
               }
             </nav>
@@ -106,8 +103,6 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
       </div>
       <div className="flex flex-col">
         <header className="flex h-14 items-center gap-4 border-b bg-muted/40 px-4 lg:h-[60px] lg:px-6">
-          {/* Mobile Nav Trigger (optional, if you want a hamburger menu for mobile) */}
-          {/* <Button variant="outline" size="icon" className="shrink-0 md:hidden"> <Menu className="h-5 w-5" /> <span className="sr-only">Toggle navigation menu</span> </Button> */}
           <div className="w-full flex-1">
             {/* Optional: Search bar or other header elements */}
           </div>
@@ -115,7 +110,7 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
             <DropdownMenuTrigger asChild>
               <Button variant="secondary" size="icon" className="rounded-full">
                 <Avatar>
-                  <AvatarImage src="https://placehold.co/40x40.png" alt="@admin" data-ai-hint="user avatar" />
+                  <AvatarImage src="https://placehold.co/40x40.png" alt="@admin" data-ai-hint="user avatar"/>
                   <AvatarFallback>{session.role ? session.role.substring(0,1).toUpperCase() : 'A'}</AvatarFallback>
                 </Avatar>
                 <span className="sr-only">Toggle user menu</span>
@@ -125,9 +120,6 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
               <DropdownMenuLabel>My Account ({session.role.replace(/_/g, ' ')})</DropdownMenuLabel>
               {session.email && <DropdownMenuLabel className="font-normal text-xs text-muted-foreground -mt-2">{session.email}</DropdownMenuLabel> }
               <DropdownMenuSeparator />
-              {/* <DropdownMenuItem>Settings</DropdownMenuItem> */}
-              {/* <DropdownMenuItem>Support</DropdownMenuItem> */}
-              {/* <DropdownMenuSeparator /> */}
               <LogoutButton />
             </DropdownMenuContent>
           </DropdownMenu>
