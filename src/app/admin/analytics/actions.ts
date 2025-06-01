@@ -10,6 +10,8 @@ import {
   endOfWeek,
   startOfMonth,
   endOfMonth,
+  startOfYear,
+  endOfYear,
   subDays,
   format,
   eachDayOfInterval,
@@ -182,12 +184,15 @@ export async function getAnalyticsPageData() {
   const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
   const monthStart = startOfMonth(new Date());
   const monthEnd = endOfMonth(new Date());
+  const currentYearStart = startOfYear(new Date());
+  const currentYearEnd = endOfYear(new Date());
 
   try {
     const [
       todayData,
       weekData,
       monthData,
+      yearData,
       overallAOV,
       popularItems,
       last30DaysSales,
@@ -195,6 +200,7 @@ export async function getAnalyticsPageData() {
       getSalesAndOrderCount(todayStart, todayEnd),
       getSalesAndOrderCount(weekStart, weekEnd),
       getSalesAndOrderCount(monthStart, monthEnd),
+      getSalesAndOrderCount(currentYearStart, currentYearEnd),
       getOverallAverageOrderValue(),
       getMostPopularItems(5),
       getDailySalesForLastNDays(30),
@@ -209,6 +215,8 @@ export async function getAnalyticsPageData() {
         weekOrders: weekData.orderCount,
         monthSales: monthData.totalSales,
         monthOrders: monthData.orderCount,
+        yearSales: yearData.totalSales,
+        yearOrders: yearData.orderCount,
         averageOrderValue: overallAOV,
         mostPopularItems: popularItems,
         dailySalesChartData: last30DaysSales,
@@ -219,3 +227,4 @@ export async function getAnalyticsPageData() {
     return { success: false, error: 'Failed to load analytics data.' };
   }
 }
+
