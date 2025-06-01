@@ -5,6 +5,7 @@ import {
   CardTitle,
   CardDescription,
   CardContent,
+  CardFooter,
 } from '@/components/ui/card';
 import {
   Table,
@@ -14,18 +15,20 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { BarChart3, TrendingUp, ShoppingCart, Users, DollarSign, AlertCircle, Package, CalendarDays } from 'lucide-react';
-import { getAnalyticsPageData, type DailySalesData } from './actions';
+import { BarChart3, TrendingUp, ShoppingCart, Users, DollarSign, AlertCircle, Package, CalendarDays, Star, MessageSquare } from 'lucide-react';
+import { getAnalyticsPageData, type DailySalesData, type ExperienceComment, type ProductComment } from './actions';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { 
   ChartContainer, 
   ChartTooltip, 
   ChartTooltipContent, 
-  ChartLegend, 
-  ChartLegendContent 
 } from "@/components/ui/chart";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts';
 import type { ChartConfig } from "@/components/ui/chart";
+import StarRatingInput from '@/components/StarRatingInput'; // For displaying stars
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
+import { Badge } from '@/components/ui/badge';
 
 // Helper function to format currency
 const formatCurrency = (amount: number) => {
@@ -49,6 +52,24 @@ const chartConfig = {
 } satisfies ChartConfig;
 
 
+function CommentCard({ comment, type }: { comment: ExperienceComment | ProductComment; type: 'overall' | 'product' }) {
+  return (
+    <div className="p-3 border rounded-lg bg-muted/30 space-y-1.5 text-sm">
+      <div className="flex justify-between items-center">
+        <span className="font-medium text-xs text-muted-foreground">
+          {comment.customerName || 'Anonymous'} - {new Date(comment.createdAt).toLocaleDateString()}
+        </span>
+        <StarRatingInput value={comment.rating} onChange={() => {}} size={14} disabled />
+      </div>
+      {type === 'product' && 'productName' in comment && (
+        <p className="font-semibold text-primary">{(comment as ProductComment).productName}</p>
+      )}
+      <p className="text-foreground leading-relaxed">{comment.comment || <span className="italic text-muted-foreground">No comment provided.</span>}</p>
+    </div>
+  );
+}
+
+
 export default async function AdminAnalyticsPage() {
   const result = await getAnalyticsPageData();
 
@@ -61,7 +82,7 @@ export default async function AdminAnalyticsPage() {
               <BarChart3 className="mr-3 h-6 w-6 text-primary" /> Business Analytics
             </CardTitle>
             <CardDescription>
-              Track sales, popular items, and gain insights into your cafe's performance.
+              Track sales, popular items, customer feedback, and gain insights into your cafe's performance.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -90,9 +111,11 @@ export default async function AdminAnalyticsPage() {
     averageOrderValue,
     mostPopularItems,
     dailySalesChartData,
+    averageExperienceRating,
+    recentExperienceComments,
+    recentProductComments,
   } = result.data;
 
-  // Format data for the chart - ensure date is short
   const formattedChartData = dailySalesChartData.map(item => ({
     ...item,
     date: new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
@@ -107,7 +130,7 @@ export default async function AdminAnalyticsPage() {
             <BarChart3 className="mr-3 h-6 w-6 text-primary" /> Business Analytics Overview
           </CardTitle>
           <CardDescription>
-            Key metrics and performance insights for Caffico Express.
+            Key metrics, performance insights, and customer feedback for Caffico Express.
           </CardDescription>
         </CardHeader>
       </Card>
@@ -172,6 +195,19 @@ export default async function AdminAnalyticsPage() {
             <p className="text-xs text-muted-foreground">Overall AOV</p>
           </CardContent>
         </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Avg. Customer Rating</CardTitle>
+            <Star className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold flex items-center">
+                {averageExperienceRating !== null ? averageExperienceRating.toFixed(1) : 'N/A'}
+                {averageExperienceRating !== null && <Star className="h-5 w-5 text-yellow-400 fill-yellow-400 ml-1" />}
+            </div>
+            <p className="text-xs text-muted-foreground">Overall experience</p>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Charts and Popular Items */}
@@ -226,7 +262,7 @@ export default async function AdminAnalyticsPage() {
             <CardTitle className="flex items-center">
                 <Package className="mr-2 h-5 w-5 text-primary" /> Most Popular Items
             </CardTitle>
-            <CardDescription>Top 5 items by quantity sold.</CardDescription>
+            <CardDescription>Top 5 items by quantity sold with average ratings.</CardDescription>
           </CardHeader>
           <CardContent>
             {mostPopularItems.length > 0 ? (
@@ -234,20 +270,30 @@ export default async function AdminAnalyticsPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Item</TableHead>
-                    <TableHead className="text-right">Quantity Sold</TableHead>
+                    <TableHead className="text-center">Sold</TableHead>
+                    <TableHead className="text-right">Avg. Rating</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {mostPopularItems.map((item, index) => (
-                    <TableRow key={index}>
+                  {mostPopularItems.map((item) => (
+                    <TableRow key={`${item.productId}-${item.servingType}`}>
                       <TableCell>
                         <div className="font-medium">{item.productName}</div>
                         <div className="text-xs text-muted-foreground">
                           ({item.servingType})
                         </div>
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-center">
                         {formatNumber(item.totalQuantitySold)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {item.averageRating !== null && item.averageRating !== undefined ? (
+                          <div className="flex items-center justify-end">
+                            {item.averageRating.toFixed(1)} <Star className="ml-1 h-3 w-3 text-yellow-400 fill-yellow-400"/>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">N/A</span>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -261,7 +307,48 @@ export default async function AdminAnalyticsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Customer Comments Section */}
+      <div className="grid gap-6 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center"><MessageSquare className="mr-2 h-5 w-5 text-primary"/>Recent Overall Feedback</CardTitle>
+            <CardDescription>Latest comments on overall experience.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {recentExperienceComments.length > 0 ? (
+              <ScrollArea className="h-[250px] pr-2">
+                <div className="space-y-3">
+                  {recentExperienceComments.map((comment, index) => (
+                    <CommentCard key={`exp-${index}`} comment={comment} type="overall" />
+                  ))}
+                </div>
+              </ScrollArea>
+            ) : (
+              <p className="text-muted-foreground text-center py-4">No recent overall comments.</p>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center"><MessageSquare className="mr-2 h-5 w-5 text-primary"/>Recent Product Feedback</CardTitle>
+            <CardDescription>Latest comments on specific products.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {recentProductComments.length > 0 ? (
+              <ScrollArea className="h-[250px] pr-2">
+                <div className="space-y-3">
+                  {recentProductComments.map((comment, index) => (
+                    <CommentCard key={`prod-${index}`} comment={comment} type="product" />
+                  ))}
+                </div>
+              </ScrollArea>
+            ) : (
+              <p className="text-muted-foreground text-center py-4">No recent product comments.</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
-

@@ -2,7 +2,7 @@
 'use server';
 
 import prisma from '@/lib/prisma';
-import { OrderStatus } from '@prisma/client';
+import { OrderStatus, type ExperienceRating, type ProductRating } from '@prisma/client';
 import {
   startOfToday,
   endOfToday,
@@ -16,6 +16,8 @@ import {
   format,
   eachDayOfInterval,
 } from 'date-fns';
+import type { ExperienceComment, ProductComment } from '@/types';
+
 
 interface SalesData {
   totalSales: number;
@@ -83,9 +85,11 @@ export async function getOverallAverageOrderValue(): Promise<number> {
 }
 
 export interface PopularItem {
+  productId: string; // Added productId
   productName: string;
   servingType: string;
   totalQuantitySold: number;
+  averageRating?: number | null; // Added averageRating
 }
 
 export async function getMostPopularItems(
@@ -93,7 +97,7 @@ export async function getMostPopularItems(
 ): Promise<PopularItem[]> {
   try {
     const items = await prisma.orderItem.groupBy({
-      by: ['productName', 'servingType'],
+      by: ['productId', 'productName', 'servingType'], // Group by productId as well
       _sum: {
         quantity: true,
       },
@@ -110,10 +114,26 @@ export async function getMostPopularItems(
       take: limit,
     });
 
+    // Get average ratings for these popular items
+    const productIds = items.map(item => item.productId);
+    const avgRatings = await prisma.productRating.groupBy({
+      by: ['productId'],
+      _avg: {
+        rating: true,
+      },
+      where: {
+        productId: { in: productIds },
+      },
+    });
+
+    const ratingsMap = new Map(avgRatings.map(r => [r.productId, r._avg.rating]));
+
     return items.map((item) => ({
+      productId: item.productId,
       productName: item.productName,
       servingType: item.servingType,
       totalQuantitySold: item._sum.quantity || 0,
+      averageRating: ratingsMap.get(item.productId) ?? null,
     }));
   } catch (error) {
     console.error('Error fetching most popular items:', error);
@@ -131,9 +151,9 @@ export async function getDailySalesForLastNDays(
 ): Promise<DailySalesData[]> {
   try {
     const endDate = endOfToday();
-    const startDate = startOfToday(); // use startOfToday to ensure consistent range for subDays
+    const startDate = startOfToday(); 
     const dateArray = eachDayOfInterval({
-      start: subDays(startDate, days -1), // -1 because we want to include today
+      start: subDays(startDate, days -1), 
       end: endDate,
     });
     
@@ -166,7 +186,6 @@ export async function getDailySalesForLastNDays(
         dailySales.push({ date, sales});
     });
 
-    // Ensure the array is sorted by date if the map iteration order is not guaranteed
     dailySales.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     return dailySales;
@@ -176,11 +195,99 @@ export async function getDailySalesForLastNDays(
   }
 }
 
+export async function getOverallAverageExperienceRating(): Promise<number | null> {
+  try {
+    const result = await prisma.experienceRating.aggregate({
+      _avg: {
+        rating: true,
+      },
+    });
+    return result._avg.rating ?? null;
+  } catch (error) {
+    console.error('Error fetching average experience rating:', error);
+    return null;
+  }
+}
+
+export async function getRecentExperienceComments(limit: number = 5): Promise<ExperienceComment[]> {
+  try {
+    const comments = await prisma.experienceRating.findMany({
+      where: {
+        comment: {
+          not: null,
+          notIn: [''], // Exclude empty strings if desired
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: limit,
+      select: {
+        comment: true,
+        rating: true,
+        createdAt: true,
+        order: {
+          select: {
+            customerName: true,
+          },
+        },
+      },
+    });
+    return comments.map(c => ({
+      comment: c.comment,
+      rating: c.rating,
+      createdAt: c.createdAt,
+      customerName: c.order.customerName,
+    }));
+  } catch (error) {
+    console.error('Error fetching recent experience comments:', error);
+    return [];
+  }
+}
+
+export async function getRecentProductComments(limit: number = 5): Promise<ProductComment[]> {
+   try {
+    const comments = await prisma.productRating.findMany({
+      where: {
+        comment: {
+          not: null,
+          notIn: [''],
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: limit,
+      select: {
+        productName: true,
+        comment: true,
+        rating: true,
+        createdAt: true,
+         order: {
+          select: {
+            customerName: true,
+          },
+        },
+      },
+    });
+     return comments.map(c => ({
+      productName: c.productName,
+      comment: c.comment,
+      rating: c.rating,
+      createdAt: c.createdAt,
+      customerName: c.order.customerName,
+    }));
+  } catch (error) {
+    console.error('Error fetching recent product comments:', error);
+    return [];
+  }
+}
+
 
 export async function getAnalyticsPageData() {
   const todayStart = startOfToday();
   const todayEnd = endOfToday();
-  const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 }); // Assuming week starts on Monday
+  const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 }); 
   const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
   const monthStart = startOfMonth(new Date());
   const monthEnd = endOfMonth(new Date());
@@ -196,6 +303,9 @@ export async function getAnalyticsPageData() {
       overallAOV,
       popularItems,
       last30DaysSales,
+      avgExperienceRating,
+      recentExpComments,
+      recentProdComments,
     ] = await Promise.all([
       getSalesAndOrderCount(todayStart, todayEnd),
       getSalesAndOrderCount(weekStart, weekEnd),
@@ -204,6 +314,9 @@ export async function getAnalyticsPageData() {
       getOverallAverageOrderValue(),
       getMostPopularItems(5),
       getDailySalesForLastNDays(30),
+      getOverallAverageExperienceRating(),
+      getRecentExperienceComments(3),
+      getRecentProductComments(3),
     ]);
 
     return {
@@ -220,6 +333,9 @@ export async function getAnalyticsPageData() {
         averageOrderValue: overallAOV,
         mostPopularItems: popularItems,
         dailySalesChartData: last30DaysSales,
+        averageExperienceRating: avgExperienceRating,
+        recentExperienceComments: recentExpComments,
+        recentProductComments: recentProdComments,
       },
     };
   } catch (error) {
@@ -227,4 +343,3 @@ export async function getAnalyticsPageData() {
     return { success: false, error: 'Failed to load analytics data.' };
   }
 }
-

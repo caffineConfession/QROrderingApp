@@ -1,4 +1,5 @@
 
+
 export const MENU_CATEGORIES_MAP = {
   COFFEE: "Blended Cold Coffee",
   SHAKES: "Shakes",
@@ -148,3 +149,30 @@ export interface PendingCashOrderView {
   orderDate: Date;
   itemsSummary: string; 
 }
+
+// Rating types
+export interface ProductRatingSubmission {
+  productId: string;
+  productName: string; // Denormalized for display consistency
+  rating: number; // 1-5
+  comment?: string;
+}
+
+export interface AllRatingsSubmissionData {
+  orderId: string;
+  overallRating: number; // 1-5
+  overallComment?: string;
+  productRatings: ProductRatingSubmission[];
+}
+
+export interface ExperienceComment {
+  comment: string | null;
+  rating: number;
+  createdAt: Date;
+  customerName: string | null;
+}
+
+export interface ProductComment extends ExperienceComment {
+  productName: string;
+}
+

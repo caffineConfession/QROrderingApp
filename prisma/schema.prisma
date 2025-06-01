@@ -11,7 +11,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Enums
+// ENUMS
 enum AdminRole {
   MANUAL_ORDER_TAKER
   ORDER_PROCESSOR
@@ -36,102 +36,141 @@ enum CustomizationType {
 
 enum PaymentMethod {
   Cash
-  UPI
-  Razorpay
+  UPI // Used by staff for manual orders
+  Razorpay // Used by customers online
 }
 
 enum OrderStatus {
-  AWAITING_PAYMENT_CONFIRMATION
-  PENDING_PREPARATION
-  PREPARING
-  READY_FOR_PICKUP
-  COMPLETED
-  CANCELLED
+  AWAITING_PAYMENT_CONFIRMATION // Customer Online order with Cash payment, before staff confirms cash receipt
+  PENDING_PREPARATION // Payment confirmed (either manual, or online confirmed, or cash confirmed by staff), ready for kitchen
+  PREPARING // Kitchen is making the order
+  READY_FOR_PICKUP // Order is made, customer can collect
+  COMPLETED // Order collected/delivered by customer
+  CANCELLED // Order cancelled
 }
 
 enum PaymentStatus {
-  PENDING
-  PAID
-  FAILED
-  REFUNDED
+  PENDING // Payment initiated but not confirmed (e.g., Cash orders, or online payment not yet verified)
+  PAID // Payment successfully confirmed
+  FAILED // Payment attempt failed
+  REFUNDED // Payment was refunded
 }
 
 enum OrderSource {
-  CUSTOMER_ONLINE
-  STAFF_MANUAL
+  CUSTOMER_ONLINE // Order placed by customer via the app/website
+  STAFF_MANUAL // Order placed manually by staff (e.g., walk-in)
 }
 
-// Models
+// MODELS
 model AdminUser {
-  id           String    @id @default(cuid()) // Changed to CUID for new users, manual ones might be email for now
+  id           String    @id @default(cuid())
   email        String    @unique
   passwordHash String
   role         AdminRole
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
-  ordersTaken  Order[]   @relation("OrderTakenBy")
-  ordersProcessed Order[] @relation("OrderProcessedBy")
+
+  ordersTaken     Order[] @relation("TakenBy")
+  ordersProcessed Order[] @relation("ProcessedBy")
 }
 
 model Product {
-  id            String       @id @default(cuid())
-  name          String
-  description   String?
-  category      ItemCategory
-  imageHint     String?
-  isAvailable   Boolean      @default(true) // New field
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-  menuItems     MenuItem[]   @relation("ProductMenuItems")
-  orderItems    OrderItem[]  @relation("ProductOrderItems")
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  category    ItemCategory
+  imageHint   String?
+  isAvailable Boolean  @default(true) // Overall availability of the product concept
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  menuItems    MenuItem[]
+  orderItems   OrderItem[]
+  productRatings ProductRating[]
 }
 
 model MenuItem {
   id            String          @id @default(cuid())
-  product       Product         @relation("ProductMenuItems", fields: [productId], references: [id], onDelete: Cascade)
+  product       Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
   productId     String
   servingType   ItemServingType
   price         Float
-  isAvailable   Boolean         @default(true) // New field
-  stockQuantity Int             @default(0)    // New field
+  stockQuantity Int             @default(0)
+  isAvailable   Boolean         @default(true) // Availability for this specific serving type/price
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
-  @@unique([productId, servingType]) // Ensure a product can't have the same serving type twice
+  @@unique([productId, servingType])
+  @@index([productId])
+  CONSTRAINT check_stock_non_negative CHECK (stockQuantity >= 0)
 }
 
 model Order {
-  id            String        @id @default(cuid())
-  customerName  String?
-  customerPhone String?
-  customerEmail String?
-  totalAmount   Float
-  paymentMethod PaymentMethod
-  paymentStatus PaymentStatus
-  status        OrderStatus
-  orderSource   OrderSource
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  
-  takenBy       AdminUser?    @relation("OrderTakenBy", fields: [takenById], references: [id])
-  takenById     String?       // This might store email for existing, or CUID for new
-  
-  processedBy   AdminUser?    @relation("OrderProcessedBy", fields: [processedById], references: [id])
-  processedById String?       // This might store email for existing, or CUID for new
+  id              String        @id @default(cuid())
+  customerName    String?
+  customerPhone   String?
+  customerEmail   String?
+  totalAmount     Float
+  paymentMethod   PaymentMethod
+  paymentStatus   PaymentStatus
+  status          OrderStatus
+  orderSource     OrderSource
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  items           OrderItem[]
+  takenBy         AdminUser?    @relation("TakenBy", fields: [takenById], references: [id])
+  takenById       String? // Admin who took a manual order or confirmed cash payment
+  processedBy     AdminUser?    @relation("ProcessedBy", fields: [processedById], references: [id])
+  processedById   String? // Admin who last processed the order status
 
-  items         OrderItem[]
+  experienceRating ExperienceRating?
+  productRatings   ProductRating[]
+
+  @@index([takenById])
+  @@index([processedById])
+  @@index([status, paymentStatus])
 }
 
 model OrderItem {
   id              String            @id @default(cuid())
-  order           Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order           Order             @relation(fields: [orderId], references: [id])
   orderId         String
-  product         Product           @relation("ProductOrderItems", fields: [productId], references: [id])
-  productId       String
-  productName     String // Denormalized for easier display on receipts/order summaries
+  product         Product           @relation(fields: [productId], references: [id]) // Relation to base product
+  productId       String // ID of the base product
+  productName     String // Denormalized from Product.name at time of purchase
   category        ItemCategory // Denormalized
   servingType     ItemServingType
   quantity        Int
-  priceAtPurchase Float
+  priceAtPurchase Float // Price of one unit of this item * servingType at purchase
   customization   CustomizationType @default(normal)
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+model ExperienceRating {
+  id          String   @id @default(cuid())
+  order       Order    @relation(fields: [orderId], references: [id])
+  orderId     String   @unique // Each order can have one overall experience rating
+  rating      Int // e.g., 1-5
+  comment     String?
+  createdAt   DateTime @default(now())
+
+  @@index([orderId])
+}
+
+model ProductRating {
+  id          String   @id @default(cuid())
+  order       Order    @relation(fields: [orderId], references: [id])
+  orderId     String
+  product     Product  @relation(fields: [productId], references: [id])
+  productId   String
+  productName String   // Denormalized from Product.name at time of order
+  rating      Int      // e.g., 1-5
+  comment     String?
+  createdAt   DateTime @default(now())
+
+  @@index([orderId])
+  @@index([productId])
+  @@unique([orderId, productId]) // Customer rates a product once per order
 }

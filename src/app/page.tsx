@@ -1,8 +1,8 @@
 
 "use client";
 
-import { useState, useMemo } from 'react';
-import type { ProductMenuItem, ItemServingType, CartItemClient, CustomerDetails, PaymentMethod } from '@/types';
+import { useState, useMemo, useEffect } from 'react';
+import type { ProductMenuItem, ItemServingType, CartItemClient, CustomerDetails, PaymentMethod, AllRatingsSubmissionData } from '@/types';
 import { MENU_CATEGORIES_MAP, ItemCategory } from '@/types'; 
 import { ALL_MENU_ITEMS } from '@/lib/constants'; 
 import Header from '@/components/Header';
@@ -11,42 +11,52 @@ import OrderCart from '@/components/OrderCart';
 import CheckoutForm from '@/components/CheckoutForm';
 import FlavorSuggester from '@/components/FlavorSuggester';
 import Footer from '@/components/Footer';
+import RatingForm from '@/components/RatingForm'; // Added RatingForm
 import { useToast } from "@/hooks/use-toast";
 import { Button } from '@/components/ui/button';
-import { AlertCircle, CheckCircle2 } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Star } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { submitCustomerOrderAction } from '@/app/actions/order-actions';
+import { submitAllRatingsAction } from '@/app/actions/rating-actions'; // Added rating action
 
 
 type AppState = "menu" | "checkout" | "confirmation";
 
+interface ConfirmedOrderDetails extends CustomerDetails {
+  items: CartItemClient[];
+  totalAmount: number;
+  paymentMethod: PaymentMethod;
+  orderId: string;
+  timestamp: Date;
+}
+
 export default function HomePage() {
   const [cartItems, setCartItems] = useState<CartItemClient[]>([]);
   const [appState, setAppState] = useState<AppState>("menu");
-  const [orderDetails, setOrderDetails] = useState<any>(null); 
+  const [orderDetails, setOrderDetails] = useState<ConfirmedOrderDetails | null>(null); 
   const { toast } = useToast();
   const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
+  const [hasRated, setHasRated] = useState(false); // Track if rating submitted for current order
 
   const handleAddToCart = (item: ProductMenuItem, servingType: ItemServingType, price: number) => {
-    const cartItemId = `${item.id}-${servingType}-${Date.now()}`; // Ensure unique ID if customized items are separate
+    const cartItemId = `${item.id}-${servingType}-${Date.now()}`; 
     setCartItems(prevItems => {
       const existingItemIndex = prevItems.findIndex(
-        ci => ci.id === item.id && ci.servingType === servingType && ci.customization === "normal" // Check for existing default item
+        ci => ci.id === item.id && ci.servingType === servingType && ci.customization === "normal"
       );
       if (existingItemIndex > -1) {
         return prevItems.map((ci, index) =>
           index === existingItemIndex ? { ...ci, quantity: ci.quantity + 1 } : ci
         );
       }
-      // Add as new if not found or if customized (customized items could be treated as distinct cart entries if needed later)
       return [...prevItems, { ...item, servingType, quantity: 1, price, cartItemId, customization: "normal" }];
     });
     toast({
       title: "Added to cart!",
       description: `${item.name} (${servingType}) has been added to your cart.`,
-      variant: "default",
     });
   };
 
@@ -99,8 +109,8 @@ export default function HomePage() {
 
     try {
       const result = await submitCustomerOrderAction(orderData);
-      if (result.success && result.orderId) {
-        const finalOrder = {
+      if (result.success && result.orderId && result.paymentMethod) {
+        const finalOrder: ConfirmedOrderDetails = {
           ...customerDetails,
           items: cartItems,
           totalAmount,
@@ -111,9 +121,10 @@ export default function HomePage() {
         setOrderDetails(finalOrder);
         setAppState("confirmation");
         setCartItems([]); 
+        setHasRated(false); // Reset rating status for new order
         toast({
           title: "Order Placed Successfully!",
-          description: `Your order #${finalOrder.orderId} has been placed. ${
+          description: `Your order #${finalOrder.orderId.substring(0,8)}... has been placed. ${
             finalOrder.paymentMethod === "Cash" 
             ? "Please pay at the counter." 
             : `A receipt will be sent to ${customerDetails.email}.`
@@ -138,6 +149,25 @@ export default function HomePage() {
       setIsSubmittingOrder(false);
     }
   };
+
+  const handleRatingsSubmitted = async (ratingsData: AllRatingsSubmissionData) => {
+    const result = await submitAllRatingsAction(ratingsData);
+    if (result.success) {
+      toast({
+        title: "Feedback Received!",
+        description: "Thanks for sharing your thoughts with us!",
+      });
+      setHasRated(true); // Mark that rating has been submitted
+    } else {
+      toast({
+        title: "Rating Submission Failed",
+        description: result.error || "Could not submit your ratings. Please try again.",
+        variant: "destructive",
+      });
+    }
+    return result; // Return result for RatingForm to handle its state
+  };
+
 
   const coffeeItems = useMemo(() => ALL_MENU_ITEMS.filter(item => item.category === ItemCategory.COFFEE), []);
   const shakeItems = useMemo(() => ALL_MENU_ITEMS.filter(item => item.category === ItemCategory.SHAKES), []);
@@ -199,14 +229,14 @@ export default function HomePage() {
         )}
 
         {appState === "confirmation" && orderDetails && (
-          <div className="max-w-2xl mx-auto text-center py-12">
-            <Card className="shadow-xl rounded-xl p-6 md:p-10">
+          <div className="max-w-3xl mx-auto py-12 space-y-8">
+            <Card className="shadow-xl rounded-xl p-6 md:p-10 text-center">
               <CheckCircle2 className="mx-auto h-20 w-20 text-green-500 mb-6" />
-              <CardHeader>
+              <CardHeader className="p-0">
                 <CardTitle className="text-3xl font-bold text-primary">Thank You for Your Order!</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4 text-left">
-                <p className="text-lg">Your order <span className="font-semibold text-accent">#{orderDetails.orderId}</span> has been placed successfully.</p>
+              <CardContent className="space-y-4 text-left mt-4">
+                <p className="text-lg text-center">Your order <span className="font-semibold text-accent">#{orderDetails.orderId.substring(0,8)}...</span> has been placed successfully.</p>
                 
                 {orderDetails.paymentMethod === "Cash" && (
                   <Alert className="mt-4 bg-yellow-50 border-yellow-300">
@@ -232,7 +262,7 @@ export default function HomePage() {
                  )}
 
                 <Separator className="my-6"/>
-                <h3 className="text-xl font-semibold mb-2">Order Summary:</h3>
+                <h3 className="text-xl font-semibold mb-2 text-center">Order Summary:</h3>
                 <ScrollArea className="max-h-60 pr-2">
                   <ul className="space-y-2">
                     {orderDetails.items.map((item: CartItemClient) => (
@@ -248,12 +278,29 @@ export default function HomePage() {
                   <span>₹{orderDetails.totalAmount.toFixed(2)}</span>
                 </div>
               </CardContent>
-              <CardFooter className="mt-8">
+              <CardFooter className="mt-8 flex-col space-y-4">
                 <Button onClick={() => { setAppState("menu"); setOrderDetails(null); }} className="w-full" size="lg">
                   Place Another Order
                 </Button>
               </CardFooter>
             </Card>
+
+            {!hasRated && orderDetails.orderId && (
+              <RatingForm
+                orderId={orderDetails.orderId}
+                orderedItems={orderDetails.items}
+                onSubmit={handleRatingsSubmitted}
+                onSubmitted={() => setHasRated(true)}
+              />
+            )}
+             {hasRated && (
+              <Card className="shadow-lg rounded-xl p-6 text-center">
+                <Star className="mx-auto h-12 w-12 text-yellow-400 mb-4" />
+                <CardTitle className="text-xl text-primary">Thanks for your feedback!</CardTitle>
+                <CardDescription>We appreciate you taking the time to rate your experience.</CardDescription>
+              </Card>
+            )}
+
           </div>
         )}
       </main>
