@@ -11,7 +11,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "postinstall": "prisma generate",
-    "prisma:seed": "npx prisma db seed"
+    "prisma:seed": "PRISMA_OPENSSL_VERSION=\"openssl-1.1.x\" npx prisma db seed"
   },
   "dependencies": {
     "@genkit-ai/googleai": "^1.8.0",
