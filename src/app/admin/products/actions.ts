@@ -163,10 +163,15 @@ export async function createMenuItemAction(productId: string, data: MenuItemForm
     return { success: false, error: "Invalid data.", issues: validation.error.issues };
   }
 
+  const dataToSave = { ...validation.data };
+  if (dataToSave.stockQuantity <= 0) {
+    dataToSave.isAvailable = false;
+  }
+
   try {
     const menuItem = await prisma.menuItem.create({
       data: {
-        ...validation.data,
+        ...dataToSave,
         productId: productId,
       },
     });
@@ -188,10 +193,15 @@ export async function updateMenuItemAction(id: string, productId: string, data: 
     return { success: false, error: "Invalid data.", issues: validation.error.issues };
   }
 
+  const dataToSave = { ...validation.data };
+  if (dataToSave.stockQuantity <= 0) {
+    dataToSave.isAvailable = false;
+  }
+
   try {
     const menuItem = await prisma.menuItem.update({
       where: { id },
-      data: validation.data,
+      data: dataToSave,
     });
     revalidatePath(`/admin/products/${productId}/menu`);
     revalidatePath(`/admin/products/${productId}/menu/${id}/edit`);
