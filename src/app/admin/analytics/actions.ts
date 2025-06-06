@@ -4,8 +4,8 @@
 import prisma from '@/lib/prisma';
 import { OrderStatus, type ExperienceRating, type ProductRating } from '@prisma/client';
 import {
-  startOfToday,
-  endOfToday,
+  startOfDay,
+  endOfDay,
   startOfWeek,
   endOfWeek,
   startOfMonth,
@@ -15,6 +15,8 @@ import {
   subDays,
   format,
   eachDayOfInterval,
+  isValid,
+  parseISO,
 } from 'date-fns';
 import type { ExperienceComment, ProductComment } from '@/types';
 
@@ -28,6 +30,10 @@ export async function getSalesAndOrderCount(
   startDate: Date,
   endDate: Date
 ): Promise<SalesData> {
+  if (!isValid(startDate) || !isValid(endDate)) {
+    console.error('Invalid dates provided to getSalesAndOrderCount:', startDate, endDate);
+    return { totalSales: 0, orderCount: 0 };
+  }
   try {
     const result = await prisma.order.aggregate({
       _sum: {
@@ -54,8 +60,16 @@ export async function getSalesAndOrderCount(
   }
 }
 
-export async function getOverallAverageOrderValue(): Promise<number> {
+export async function getOverallAverageOrderValue(startDate?: Date, endDate?: Date): Promise<number> {
   try {
+    const whereClause: any = { status: OrderStatus.COMPLETED };
+    if (startDate && endDate && isValid(startDate) && isValid(endDate)) {
+      whereClause.createdAt = {
+        gte: startDate,
+        lte: endDate,
+      };
+    }
+
     const completedOrdersAggregation = await prisma.order.aggregate({
       _sum: {
         totalAmount: true,
@@ -63,9 +77,7 @@ export async function getOverallAverageOrderValue(): Promise<number> {
       _count: {
         id: true,
       },
-      where: {
-        status: OrderStatus.COMPLETED,
-      },
+      where: whereClause,
     });
 
     if (
@@ -79,32 +91,40 @@ export async function getOverallAverageOrderValue(): Promise<number> {
     }
     return 0;
   } catch (error) {
-    console.error('Error fetching overall AOV:', error);
+    console.error('Error fetching AOV:', error);
     return 0;
   }
 }
 
 export interface PopularItem {
-  productId: string; // Added productId
+  productId: string;
   productName: string;
   servingType: string;
   totalQuantitySold: number;
-  averageRating?: number | null; // Added averageRating
+  averageRating?: number | null;
 }
 
 export async function getMostPopularItems(
-  limit: number = 5
+  limit: number = 5,
+  startDate?: Date,
+  endDate?: Date
 ): Promise<PopularItem[]> {
   try {
+    const orderWhereClause: any = { status: OrderStatus.COMPLETED };
+    if (startDate && endDate && isValid(startDate) && isValid(endDate)) {
+      orderWhereClause.createdAt = {
+        gte: startDate,
+        lte: endDate,
+      };
+    }
+
     const items = await prisma.orderItem.groupBy({
-      by: ['productId', 'productName', 'servingType'], // Group by productId as well
+      by: ['productId', 'productName', 'servingType'],
       _sum: {
         quantity: true,
       },
       where: {
-        order: {
-          status: OrderStatus.COMPLETED,
-        },
+        order: orderWhereClause,
       },
       orderBy: {
         _sum: {
@@ -114,16 +134,25 @@ export async function getMostPopularItems(
       take: limit,
     });
 
-    // Get average ratings for these popular items
     const productIds = items.map(item => item.productId);
+    const productRatingWhereClause: any = { productId: { in: productIds } };
+    if (startDate && endDate && isValid(startDate) && isValid(endDate)) {
+      // Assuming ProductRating links to Order, and Order has createdAt
+       productRatingWhereClause.order = {
+         createdAt: {
+           gte: startDate,
+           lte: endDate,
+         }
+       };
+    }
+
+
     const avgRatings = await prisma.productRating.groupBy({
       by: ['productId'],
       _avg: {
         rating: true,
       },
-      where: {
-        productId: { in: productIds },
-      },
+      where: productRatingWhereClause,
     });
 
     const ratingsMap = new Map(avgRatings.map(r => [r.productId, r._avg.rating]));
@@ -146,14 +175,17 @@ export interface DailySalesData {
   sales: number;
 }
 
-export async function getDailySalesForLastNDays(
-  days: number = 30
+export async function getSalesChartDataForRange(
+  startDate: Date,
+  endDate: Date
 ): Promise<DailySalesData[]> {
+  if (!isValid(startDate) || !isValid(endDate) || startDate > endDate) {
+    console.error('Invalid date range for sales chart data:', startDate, endDate);
+    return [];
+  }
   try {
-    const endDate = endOfToday();
-    const startDate = startOfToday(); 
     const dateArray = eachDayOfInterval({
-      start: subDays(startDate, days -1), 
+      start: startDate,
       end: endDate,
     });
     
@@ -166,8 +198,8 @@ export async function getDailySalesForLastNDays(
       where: {
         status: OrderStatus.COMPLETED,
         createdAt: {
-          gte: subDays(startDate, days -1),
-          lte: endDate,
+          gte: startOfDay(startDate),
+          lte: endOfDay(endDate),
         },
       },
       select: {
@@ -190,17 +222,28 @@ export async function getDailySalesForLastNDays(
 
     return dailySales;
   } catch (error) {
-    console.error(`Error fetching daily sales for last ${days} days:`, error);
+    console.error(`Error fetching daily sales for range:`, error);
     return [];
   }
 }
 
-export async function getOverallAverageExperienceRating(): Promise<number | null> {
+export async function getOverallAverageExperienceRating(startDate?: Date, endDate?: Date): Promise<number | null> {
   try {
+    const whereClause: any = {};
+     if (startDate && endDate && isValid(startDate) && isValid(endDate)) {
+      // Assuming ExperienceRating links to Order, and Order has createdAt
+       whereClause.order = {
+         createdAt: {
+           gte: startDate,
+           lte: endDate,
+         }
+       };
+    }
     const result = await prisma.experienceRating.aggregate({
       _avg: {
         rating: true,
       },
+      where: whereClause,
     });
     return result._avg.rating ?? null;
   } catch (error) {
@@ -209,15 +252,25 @@ export async function getOverallAverageExperienceRating(): Promise<number | null
   }
 }
 
-export async function getRecentExperienceComments(limit: number = 5): Promise<ExperienceComment[]> {
+export async function getRecentExperienceComments(limit: number = 3, startDate?: Date, endDate?: Date): Promise<ExperienceComment[]> {
   try {
-    const comments = await prisma.experienceRating.findMany({
-      where: {
-        comment: {
-          not: null,
-          notIn: [''], // Exclude empty strings if desired
-        },
+    const whereClause: any = {
+      comment: {
+        not: null,
+        notIn: [''],
       },
+    };
+    if (startDate && endDate && isValid(startDate) && isValid(endDate)) {
+       whereClause.order = {
+         createdAt: {
+           gte: startDate,
+           lte: endDate,
+         }
+       };
+    }
+
+    const comments = await prisma.experienceRating.findMany({
+      where: whereClause,
       orderBy: {
         createdAt: 'desc',
       },
@@ -245,15 +298,25 @@ export async function getRecentExperienceComments(limit: number = 5): Promise<Ex
   }
 }
 
-export async function getRecentProductComments(limit: number = 5): Promise<ProductComment[]> {
+export async function getRecentProductComments(limit: number = 3, startDate?: Date, endDate?: Date): Promise<ProductComment[]> {
    try {
-    const comments = await prisma.productRating.findMany({
-      where: {
-        comment: {
-          not: null,
-          notIn: [''],
-        },
+    const whereClause: any = {
+      comment: {
+        not: null,
+        notIn: [''],
       },
+    };
+    if (startDate && endDate && isValid(startDate) && isValid(endDate)) {
+       whereClause.order = {
+         createdAt: {
+           gte: startDate,
+           lte: endDate,
+         }
+       };
+    }
+
+    const comments = await prisma.productRating.findMany({
+      where: whereClause,
       orderBy: {
         createdAt: 'desc',
       },
@@ -283,63 +346,90 @@ export async function getRecentProductComments(limit: number = 5): Promise<Produ
   }
 }
 
+export interface AnalyticsPageData {
+  selectedSales: number;
+  selectedOrders: number;
+  averageOrderValue: number;
+  mostPopularItems: PopularItem[];
+  dailySalesChartData: DailySalesData[];
+  averageExperienceRating: number | null;
+  recentExperienceComments: ExperienceComment[];
+  recentProductComments: ProductComment[];
+  filterRange?: { from: string, to: string };
+}
 
-export async function getAnalyticsPageData() {
-  const todayStart = startOfToday();
-  const todayEnd = endOfToday();
-  const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 }); 
-  const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
-  const monthStart = startOfMonth(new Date());
-  const monthEnd = endOfMonth(new Date());
-  const currentYearStart = startOfYear(new Date());
-  const currentYearEnd = endOfYear(new Date());
+export async function getAnalyticsPageData(dateRange?: { from?: string; to?: string }): Promise<{
+  success: boolean;
+  data?: AnalyticsPageData;
+  error?: string;
+}> {
+  let startDate: Date | undefined;
+  let endDate: Date | undefined;
+  let filterRangeApplied = false;
+
+  if (dateRange?.from && dateRange?.to) {
+    startDate = parseISO(dateRange.from);
+    endDate = parseISO(dateRange.to);
+    if (isValid(startDate) && isValid(endDate)) {
+        startDate = startOfDay(startDate);
+        endDate = endOfDay(endDate);
+        filterRangeApplied = true;
+    } else {
+      console.warn("Invalid date range provided, falling back to defaults or overall.")
+      startDate = undefined;
+      endDate = undefined;
+    }
+  }
+
+  // Default chart range if no valid dateRange is provided for it
+  const chartStartDate = filterRangeApplied && startDate ? startDate : subDays(startOfDay(new Date()), 29);
+  const chartEndDate = filterRangeApplied && endDate ? endDate : endOfDay(new Date());
+  
+  // For summary cards, if no range, use a wide range (e.g., year) or specific logic.
+  // For now, if a range is applied, salesData will use it. Otherwise, it will fetch for "This Year" as an example default.
+  const summaryStartDate = filterRangeApplied && startDate ? startDate : startOfYear(new Date());
+  const summaryEndDate = filterRangeApplied && endDate ? endDate : endOfYear(new Date());
+
 
   try {
     const [
-      todayData,
-      weekData,
-      monthData,
-      yearData,
-      overallAOV,
+      salesData,
+      overallAOV, // AOV can be for the selected range or overall. Let's make it for selected range if provided.
       popularItems,
-      last30DaysSales,
-      avgExperienceRating,
-      recentExpComments,
-      recentProdComments,
+      dailySalesDataForChart,
+      avgExperienceRating, // Can also be for selected range
+      recentExpComments, // Can also be for selected range
+      recentProdComments, // Can also be for selected range
     ] = await Promise.all([
-      getSalesAndOrderCount(todayStart, todayEnd),
-      getSalesAndOrderCount(weekStart, weekEnd),
-      getSalesAndOrderCount(monthStart, monthEnd),
-      getSalesAndOrderCount(currentYearStart, currentYearEnd),
-      getOverallAverageOrderValue(),
-      getMostPopularItems(5),
-      getDailySalesForLastNDays(30),
-      getOverallAverageExperienceRating(),
-      getRecentExperienceComments(3),
-      getRecentProductComments(3),
+      getSalesAndOrderCount(summaryStartDate, summaryEndDate),
+      getOverallAverageOrderValue(startDate, endDate), // Pass range if available
+      getMostPopularItems(5, startDate, endDate), // Pass range
+      getSalesChartDataForRange(chartStartDate, chartEndDate),
+      getOverallAverageExperienceRating(startDate, endDate), // Pass range
+      getRecentExperienceComments(3, startDate, endDate), // Pass range
+      getRecentProductComments(3, startDate, endDate), // Pass range
     ]);
 
     return {
       success: true,
       data: {
-        todaySales: todayData.totalSales,
-        todayOrders: todayData.orderCount,
-        weekSales: weekData.totalSales,
-        weekOrders: weekData.orderCount,
-        monthSales: monthData.totalSales,
-        monthOrders: monthData.orderCount,
-        yearSales: yearData.totalSales,
-        yearOrders: yearData.orderCount,
+        selectedSales: salesData.totalSales,
+        selectedOrders: salesData.orderCount,
         averageOrderValue: overallAOV,
         mostPopularItems: popularItems,
-        dailySalesChartData: last30DaysSales,
+        dailySalesChartData: dailySalesDataForChart,
         averageExperienceRating: avgExperienceRating,
         recentExperienceComments: recentExpComments,
         recentProductComments: recentProdComments,
+        filterRange: filterRangeApplied && startDate && endDate ? { from: format(startDate, 'yyyy-MM-dd'), to: format(endDate, 'yyyy-MM-dd') } : undefined,
       },
     };
   } catch (error) {
     console.error('Failed to fetch analytics page data:', error);
-    return { success: false, error: 'Failed to load analytics data.' };
+    const errorMessage = error instanceof Error ? error.message : 'Failed to load analytics data.';
+    return { success: false, error: errorMessage };
   }
 }
+
+
+    
