@@ -1,3 +1,4 @@
+
 // src/app/admin/manual-order/actions.ts
 "use server";
 
@@ -9,16 +10,7 @@ import { OrderStatus, PaymentStatus, OrderSource, PaymentMethod, ItemCategory as
 import { cookies } from "next/headers";
 import { decryptSession } from "@/lib/session";
 import { revalidatePath } from "next/cache";
-import { COFFEE_FLAVORS_BASE, SHAKE_FLAVORS_BASE } from '@/lib/constants';
 import { broadcastOrderUpdate } from "@/lib/websocket";
-
-
-// Assuming COFFEE_FLAVORS_BASE and SHAKE_FLAVORS_BASE use ItemCategory from @/types
-const ALL_MENU_ITEMS_FLAT = [
-  ...COFFEE_FLAVORS_BASE.map(item => ({ ...item, category: item.category as unknown as PrismaItemCategory })), // Cast if necessary
-  ...SHAKE_FLAVORS_BASE.map(item => ({ ...item, category: item.category as unknown as PrismaItemCategory })), // Cast if necessary
-];
-
 
 export async function createManualOrderAction(
   data: ManualOrderSubmitData
@@ -35,6 +27,31 @@ export async function createManualOrderAction(
   }
 
   try {
+    // Prepare order items by fetching product details from DB
+    const orderItemsData = await Promise.all(
+      data.items.map(async (item) => {
+        const productInfo = await prisma.product.findUnique({
+          where: { id: item.productId },
+          select: { name: true, category: true },
+        });
+
+        if (!productInfo) {
+          throw new Error(`Product with ID ${item.productId} not found in database.`);
+        }
+        const servingType = item.servingType as PrismaItemServingType;
+
+        return {
+          productId: item.productId,
+          productName: productInfo.name,
+          category: productInfo.category, 
+          servingType: servingType, 
+          quantity: item.quantity,
+          priceAtPurchase: item.priceAtPurchase,
+          customization: item.customization, 
+        };
+      })
+    );
+
     // Stock is no longer deducted here. It's deducted when order status changes to COMPLETED.
     const newOrder = await prisma.order.create({
       data: {
@@ -47,25 +64,7 @@ export async function createManualOrderAction(
         orderSource: OrderSource.STAFF_MANUAL, 
         takenById: session.userId,
         items: {
-          create: data.items.map((item) => {
-            const productInfo = ALL_MENU_ITEMS_FLAT.find(p => p.id === item.productId);
-            if (!productInfo) {
-                // This check remains important for data integrity if constants are the source of truth for product names/categories.
-                // If products are fully DB driven, this might fetch from DB instead.
-                throw new Error(`Product with ID ${item.productId} not found in local constants.`);
-            }
-            const servingType = item.servingType as PrismaItemServingType;
-
-            return {
-              productId: item.productId,
-              productName: productInfo.name,
-              category: productInfo.category, 
-              servingType: servingType, 
-              quantity: item.quantity,
-              priceAtPurchase: item.priceAtPurchase,
-              customization: item.customization, 
-            };
-          }),
+          create: orderItemsData, // Use the data fetched and prepared above
         },
       },
     });
@@ -190,3 +189,4 @@ export async function confirmCashPaymentAction(orderId: string): Promise<{ succe
         return { success: false, error: "Failed to confirm payment due to an unexpected error." };
     }
 }
+
