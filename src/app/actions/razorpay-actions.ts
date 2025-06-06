@@ -10,24 +10,31 @@ import { revalidatePath } from 'next/cache';
 const razorpayKeyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
 const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET;
 
-if (!razorpayKeyId || !razorpayKeySecret) {
-  console.error("Razorpay Key ID or Key Secret is not defined in environment variables.");
-  // Not throwing error here as it would break build if keys are not set yet,
-  // but actions will fail if called.
-}
+let razorpayInstance: Razorpay | null = null;
 
-const razorpayInstance = new Razorpay({
-  key_id: razorpayKeyId!,
-  key_secret: razorpayKeySecret!,
-});
+if (razorpayKeyId && razorpayKeySecret) {
+  try {
+    razorpayInstance = new Razorpay({
+      key_id: razorpayKeyId,
+      key_secret: razorpayKeySecret,
+    });
+  } catch (error) {
+    console.error("Failed to initialize Razorpay instance:", error);
+    // razorpayInstance will remain null
+  }
+} else {
+  console.error(
+    "Razorpay Key ID or Key Secret is not defined in environment variables. Razorpay instance will not be initialized. Actions requiring Razorpay will fail."
+  );
+}
 
 export async function createRazorpayOrderAction(
   amountInPaise: number, // Amount in paise
   currency: string,
   internalOrderId: string // Caffico's internal order ID
 ): Promise<{ success: boolean; error?: string; razorpayOrderId?: string; amount?: number; currency?: string; orderId?: string }> {
-  if (!razorpayKeyId || !razorpayKeySecret) {
-    return { success: false, error: "Razorpay API keys not configured on the server." };
+  if (!razorpayInstance) {
+    return { success: false, error: "Razorpay API keys not configured or instance not initialized on the server." };
   }
   try {
     const options = {
@@ -70,8 +77,8 @@ export async function verifyRazorpayPaymentAction(data: {
   razorpay_signature: string;
   internalOrderId: string; // This is Caffico's internal order_id
 }): Promise<{ success: boolean; error?: string; orderId?: string }> {
-  if (!razorpayKeySecret) {
-    return { success: false, error: "Razorpay Key Secret not configured on the server." };
+  if (!razorpayInstance || !razorpayKeySecret) { // Also check razorpayKeySecret for HMAC
+    return { success: false, error: "Razorpay Key Secret not configured or instance not initialized on the server." };
   }
   const { razorpay_payment_id, razorpay_order_id, razorpay_signature, internalOrderId } = data;
 
@@ -79,7 +86,7 @@ export async function verifyRazorpayPaymentAction(data: {
 
   try {
     const expectedSignature = crypto
-      .createHmac('sha256', razorpayKeySecret)
+      .createHmac('sha256', razorpayKeySecret) // razorpayKeySecret must be defined here
       .update(body.toString())
       .digest('hex');
 
@@ -104,6 +111,8 @@ export async function verifyRazorpayPaymentAction(data: {
 
       return { success: true, orderId: internalOrderId };
     } else {
+      // Log failed verification attempt for security monitoring
+      console.warn(`Payment verification failed for order ${internalOrderId}. Signatures did not match.`);
       return { success: false, error: "Payment verification failed: Invalid signature." };
     }
   } catch (error) {
