@@ -11,7 +11,7 @@ import OrderCart from '@/components/OrderCart';
 import CheckoutForm from '@/components/CheckoutForm';
 import FlavorSuggester from '@/components/FlavorSuggester';
 import Footer from '@/components/Footer';
-import RatingForm from '@/components/RatingForm'; // Added RatingForm
+import RatingForm from '@/components/RatingForm'; 
 import { useToast } from "@/hooks/use-toast";
 import { Button } from '@/components/ui/button';
 import { AlertCircle, CheckCircle2, Star } from 'lucide-react';
@@ -20,7 +20,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { submitCustomerOrderAction } from '@/app/actions/order-actions';
-import { submitAllRatingsAction } from '@/app/actions/rating-actions'; // Added rating action
+import { submitAllRatingsAction } from '@/app/actions/rating-actions'; 
 
 
 type AppState = "menu" | "checkout" | "confirmation";
@@ -38,8 +38,8 @@ export default function HomePage() {
   const [appState, setAppState] = useState<AppState>("menu");
   const [orderDetails, setOrderDetails] = useState<ConfirmedOrderDetails | null>(null); 
   const { toast } = useToast();
-  const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
-  const [hasRated, setHasRated] = useState(false); // Track if rating submitted for current order
+  const [isSubmittingInternalOrder, setIsSubmittingInternalOrder] = useState(false);
+  const [hasRated, setHasRated] = useState(false); 
 
   const handleAddToCart = (item: ProductMenuItem, servingType: ItemServingType, price: number) => {
     const cartItemId = `${item.id}-${servingType}-${Date.now()}`; 
@@ -96,8 +96,9 @@ export default function HomePage() {
     setAppState("checkout");
   };
 
-  const handleSubmitOrder = async (customerDetails: CustomerDetails, paymentMethod: PaymentMethod.Cash | PaymentMethod.Razorpay) => {
-    setIsSubmittingOrder(true);
+  // This function is passed to CheckoutForm for creating the internal order
+  const handleSubmitInternalOrder = async (customerDetails: CustomerDetails, paymentMethod: PaymentMethod.Cash | PaymentMethod.Razorpay) => {
+    setIsSubmittingInternalOrder(true);
     const totalAmount = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
     
     const orderData = {
@@ -109,46 +110,49 @@ export default function HomePage() {
 
     try {
       const result = await submitCustomerOrderAction(orderData);
-      if (result.success && result.orderId && result.paymentMethod) {
-        const finalOrder: ConfirmedOrderDetails = {
-          ...customerDetails,
-          items: cartItems,
-          totalAmount,
-          paymentMethod: result.paymentMethod,
-          orderId: result.orderId,
-          timestamp: new Date(),
-        };
-        setOrderDetails(finalOrder);
-        setAppState("confirmation");
-        setCartItems([]); 
-        setHasRated(false); // Reset rating status for new order
-        toast({
-          title: "Order Placed Successfully!",
-          description: `Your order #${finalOrder.orderId.substring(0,8)}... has been placed. ${
-            finalOrder.paymentMethod === "Cash" 
-            ? "Please pay at the counter." 
-            : `A receipt will be sent to ${customerDetails.email}.`
-          }`,
-          duration: 7000,
-        });
-      } else {
-        toast({
-          title: "Order Submission Failed",
-          description: result.error || "Could not place your order. Please try again.",
-          variant: "destructive",
-        });
-      }
+      // The result now includes orderId, totalAmount, and paymentMethod which are needed by CheckoutForm
+      // for Razorpay flow or direct confirmation for Cash.
+      return result; 
     } catch (error) {
-      console.error("Error submitting order:", error);
+      console.error("Error submitting internal order:", error);
       toast({
         title: "Order Error",
         description: "An unexpected error occurred while placing your order.",
         variant: "destructive",
       });
+      return { success: false, error: "An unexpected error occurred." };
     } finally {
-      setIsSubmittingOrder(false);
+      setIsSubmittingInternalOrder(false);
     }
   };
+
+  // This function is called by CheckoutForm after payment is successful (either cash or Razorpay verified)
+  const handlePaymentSuccess = (
+    confirmedOrder: { orderId: string, paymentMethod: PaymentMethod, customerDetails: CustomerDetails, totalAmount: number }
+  ) => {
+    const finalOrder: ConfirmedOrderDetails = {
+      ...confirmedOrder.customerDetails,
+      items: cartItems, // cartItems from HomePage state
+      totalAmount: confirmedOrder.totalAmount,
+      paymentMethod: confirmedOrder.paymentMethod,
+      orderId: confirmedOrder.orderId,
+      timestamp: new Date(),
+    };
+    setOrderDetails(finalOrder);
+    setAppState("confirmation");
+    setCartItems([]); 
+    setHasRated(false); 
+    toast({
+      title: "Order Placed Successfully!",
+      description: `Your order #${finalOrder.orderId.substring(0,8)}... has been placed. ${
+        finalOrder.paymentMethod === "Cash" 
+        ? "Please pay at the counter." 
+        : `Payment confirmed. A receipt will be sent to ${confirmedOrder.customerDetails.email}.`
+      }`,
+      duration: 7000,
+    });
+  };
+
 
   const handleRatingsSubmitted = async (ratingsData: AllRatingsSubmissionData) => {
     const result = await submitAllRatingsAction(ratingsData);
@@ -157,7 +161,7 @@ export default function HomePage() {
         title: "Feedback Received!",
         description: "Thanks for sharing your thoughts with us!",
       });
-      setHasRated(true); // Mark that rating has been submitted
+      setHasRated(true); 
     } else {
       toast({
         title: "Rating Submission Failed",
@@ -165,7 +169,7 @@ export default function HomePage() {
         variant: "destructive",
       });
     }
-    return result; // Return result for RatingForm to handle its state
+    return result; 
   };
 
 
@@ -221,9 +225,10 @@ export default function HomePage() {
           <div className="max-w-2xl mx-auto">
             <CheckoutForm
               totalAmount={cartTotal}
-              onSubmitOrder={handleSubmitOrder}
+              onSubmitOrder={handleSubmitInternalOrder}
               onBackToCart={() => setAppState("menu")}
-              isSubmitting={isSubmittingOrder}
+              isSubmittingInternalOrder={isSubmittingInternalOrder}
+              onPaymentSuccess={handlePaymentSuccess}
             />
           </div>
         )}
@@ -250,17 +255,14 @@ export default function HomePage() {
                  {orderDetails.paymentMethod === "Razorpay" && (
                   <Alert className="mt-4 bg-blue-50 border-blue-300">
                     <AlertCircle className="h-4 w-4 text-blue-600" />
-                    <AlertTitle className="text-blue-700">Online Payment Pending</AlertTitle>
+                    <AlertTitle className="text-blue-700">Online Payment Successful</AlertTitle>
                     <AlertDescription className="text-blue-600">
-                      Your order is awaiting payment confirmation via Razorpay. If you haven't completed the payment, please do so.
-                       A receipt will be sent to <span className="font-semibold text-accent">{orderDetails.email}</span> upon successful payment.
+                       Your online payment of ₹{orderDetails.totalAmount.toFixed(2)} was successful.
+                       A receipt will be sent to <span className="font-semibold text-accent">{orderDetails.email}</span>.
                     </AlertDescription>
                   </Alert>
                 )}
-                 {orderDetails.paymentMethod !== "Cash" && orderDetails.paymentMethod !== "Razorpay" && (
-                    <p>A confirmation email with your receipt will be sent to <span className="font-semibold text-accent">{orderDetails.email}</span>.</p>
-                 )}
-
+                
                 <Separator className="my-6"/>
                 <h3 className="text-xl font-semibold mb-2 text-center">Order Summary:</h3>
                 <ScrollArea className="max-h-60 pr-2">

@@ -1,22 +1,125 @@
-
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-generator client {
-  provider = "prisma-client-js"
-}
-
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-// ENUMS
-enum AdminRole {
-  MANUAL_ORDER_TAKER
-  ORDER_PROCESSOR
-  BUSINESS_MANAGER
+generator client {
+  provider = "prisma-client-js"
 }
+
+model Product {
+  id            String        @id @default(cuid())
+  name          String
+  description   String?
+  category      ItemCategory // COFFEE or SHAKES
+  imageHint     String?       @default("food drink")
+  isAvailable   Boolean       @default(true) // Is the base product available?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  menuItems     MenuItem[] // Coffee or Shake can have multiple serving types
+  productRatings ProductRating[]
+}
+
+model MenuItem {
+  id            String          @id @default(cuid())
+  productId     String
+  product       Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  servingType   ItemServingType // e.g., Cone, Cup
+  price         Float
+  stockQuantity Int             @default(0)
+  isAvailable   Boolean         @default(true) // Is this specific serving type available?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  orderItems    OrderItem[]
+
+  @@unique([productId, servingType]) // Ensure a product can't have duplicate serving types
+  @@index([productId])
+}
+
+model Order {
+  id                         String        @id @default(cuid())
+  customerName               String?
+  customerPhone              String?
+  customerEmail              String?
+  totalAmount                Float
+  status                     OrderStatus   @default(PENDING_PREPARATION)
+  paymentStatus              PaymentStatus @default(PENDING)
+  paymentMethod              PaymentMethod
+  orderSource                OrderSource   @default(CUSTOMER_ONLINE)
+  createdAt                  DateTime      @default(now())
+  updatedAt                  DateTime      @updatedAt
+  items                      OrderItem[]
+  takenById                  String? // AdminUser ID (email for now, to be CUID) who took/created manual order
+  processedById              String? // AdminUser ID (email for now, to be CUID) who last updated status
+  experienceRating           ExperienceRating?
+  productRatings             ProductRating[]
+  gatewayOrderId             String?       @unique // For Razorpay order_id
+  gatewayPaymentId           String?       @unique // For Razorpay payment_id
+
+  // Relations to AdminUser can be added later if using CUIDs for admin IDs
+  // takenBy AdminUser? @relation("OrdersTaken", fields: [takenById], references: [id])
+  // processedBy AdminUser? @relation("OrdersProcessed", fields: [processedById], references: [id])
+}
+
+model OrderItem {
+  id              String          @id @default(cuid())
+  orderId         String
+  order           Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId       String          // Denormalized product ID from MenuItem's product
+  productName     String          // Denormalized product name
+  category        ItemCategory    // Denormalized category
+  servingType     ItemServingType // Denormalized serving type
+  quantity        Int
+  priceAtPurchase Float           // Price per unit at the time of purchase
+  customization   String?         // e.g., "sweet", "bitter" - consider making an enum if fixed values
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  menuItem   MenuItem? @relation(fields: [productId, servingType], references: [productId, servingType], onDelete: Restrict)
+  // Constraint to ensure productId and servingType in OrderItem match an existing MenuItem
+  // is not directly expressible in Prisma schema for non-id fields in this way.
+  // This relation relies on the unique constraint in MenuItem and application logic.
+  // If MenuItem is deleted, Restrict will prevent OrderItem deletion if it refers to it.
+
+  @@index([orderId])
+  @@index([productId, servingType])
+}
+
+model AdminUser {
+  id           String     @id @default(cuid()) // Using email as ID for now for compatibility
+  email        String     @unique
+  passwordHash String
+  role         AdminRole
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+model ExperienceRating {
+  id        String   @id @default(cuid())
+  orderId   String   @unique // Each order can have one overall experience rating
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  rating    Int // 1-5 stars
+  comment   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ProductRating {
+  id          String   @id @default(cuid())
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId   String   // Corresponds to Product.id
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productName String   // Denormalized product name for easier display with rating
+  rating      Int // 1-5 stars
+  comment     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([orderId, productId]) // A user can rate a specific product in an order only once
+  @@index([productId])
+}
+
 
 enum ItemCategory {
   COFFEE
@@ -28,149 +131,35 @@ enum ItemServingType {
   Cup
 }
 
-enum CustomizationType {
-  normal
-  sweet
-  bitter
-}
-
 enum PaymentMethod {
   Cash
-  UPI // Used by staff for manual orders
-  Razorpay // Used by customers online
+  UPI
+  Razorpay
 }
 
 enum OrderStatus {
-  AWAITING_PAYMENT_CONFIRMATION // Customer Online order with Cash payment, before staff confirms cash receipt
-  PENDING_PREPARATION // Payment confirmed (either manual, or online confirmed, or cash confirmed by staff), ready for kitchen
-  PREPARING // Kitchen is making the order
-  READY_FOR_PICKUP // Order is made, customer can collect
-  COMPLETED // Order collected/delivered by customer
-  CANCELLED // Order cancelled
+  AWAITING_PAYMENT_CONFIRMATION
+  PENDING_PREPARATION
+  PREPARING
+  READY_FOR_PICKUP
+  COMPLETED
+  CANCELLED
 }
 
 enum PaymentStatus {
-  PENDING // Payment initiated but not confirmed (e.g., Cash orders, or online payment not yet verified)
-  PAID // Payment successfully confirmed
-  FAILED // Payment attempt failed
-  REFUNDED // Payment was refunded
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
 }
 
 enum OrderSource {
-  CUSTOMER_ONLINE // Order placed by customer via the app/website
-  STAFF_MANUAL // Order placed manually by staff (e.g., walk-in)
+  CUSTOMER_ONLINE
+  STAFF_MANUAL
 }
 
-// MODELS
-model AdminUser {
-  id           String    @id @default(cuid())
-  email        String    @unique
-  passwordHash String
-  role         AdminRole
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-
-  ordersTaken     Order[] @relation("TakenBy")
-  ordersProcessed Order[] @relation("ProcessedBy")
-}
-
-model Product {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  category    ItemCategory
-  imageHint   String?
-  isAvailable Boolean  @default(true) // Overall availability of the product concept
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  menuItems    MenuItem[]
-  orderItems   OrderItem[]
-  productRatings ProductRating[]
-}
-
-model MenuItem {
-  id            String          @id @default(cuid())
-  product       Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
-  productId     String
-  servingType   ItemServingType
-  price         Float
-  stockQuantity Int             @default(0)
-  isAvailable   Boolean         @default(true) // Availability for this specific serving type/price
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
-
-  @@unique([productId, servingType])
-  @@index([productId])
-  CONSTRAINT check_stock_non_negative CHECK (stockQuantity >= 0)
-}
-
-model Order {
-  id              String        @id @default(cuid())
-  customerName    String?
-  customerPhone   String?
-  customerEmail   String?
-  totalAmount     Float
-  paymentMethod   PaymentMethod
-  paymentStatus   PaymentStatus
-  status          OrderStatus
-  orderSource     OrderSource
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  items           OrderItem[]
-  takenBy         AdminUser?    @relation("TakenBy", fields: [takenById], references: [id])
-  takenById       String? // Admin who took a manual order or confirmed cash payment
-  processedBy     AdminUser?    @relation("ProcessedBy", fields: [processedById], references: [id])
-  processedById   String? // Admin who last processed the order status
-
-  experienceRating ExperienceRating?
-  productRatings   ProductRating[]
-
-  @@index([takenById])
-  @@index([processedById])
-  @@index([status, paymentStatus])
-}
-
-model OrderItem {
-  id              String            @id @default(cuid())
-  order           Order             @relation(fields: [orderId], references: [id])
-  orderId         String
-  product         Product           @relation(fields: [productId], references: [id]) // Relation to base product
-  productId       String // ID of the base product
-  productName     String // Denormalized from Product.name at time of purchase
-  category        ItemCategory // Denormalized
-  servingType     ItemServingType
-  quantity        Int
-  priceAtPurchase Float // Price of one unit of this item * servingType at purchase
-  customization   CustomizationType @default(normal)
-
-  @@index([orderId])
-  @@index([productId])
-}
-
-model ExperienceRating {
-  id          String   @id @default(cuid())
-  order       Order    @relation(fields: [orderId], references: [id])
-  orderId     String   @unique // Each order can have one overall experience rating
-  rating      Int // e.g., 1-5
-  comment     String?
-  createdAt   DateTime @default(now())
-
-  @@index([orderId])
-}
-
-model ProductRating {
-  id          String   @id @default(cuid())
-  order       Order    @relation(fields: [orderId], references: [id])
-  orderId     String
-  product     Product  @relation(fields: [productId], references: [id])
-  productId   String
-  productName String   // Denormalized from Product.name at time of order
-  rating      Int      // e.g., 1-5
-  comment     String?
-  createdAt   DateTime @default(now())
-
-  @@index([orderId])
-  @@index([productId])
-  @@unique([orderId, productId]) // Customer rates a product once per order
+enum AdminRole {
+  MANUAL_ORDER_TAKER
+  ORDER_PROCESSOR
+  BUSINESS_MANAGER
 }
