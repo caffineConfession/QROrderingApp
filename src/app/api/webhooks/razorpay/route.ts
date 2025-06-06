@@ -1,9 +1,10 @@
-
+// src/app/api/webhooks/razorpay/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import prisma from '@/lib/prisma';
 import { OrderStatus, PaymentStatus } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
+import { broadcastOrderUpdate } from '@/lib/websocket';
 
 const razorpayWebhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
 
@@ -72,7 +73,7 @@ export async function POST(req: NextRequest) {
       });
 
       if (currentOrder && currentOrder.paymentStatus !== PaymentStatus.PAID) {
-        await prisma.order.update({
+        const updatedOrder = await prisma.order.update({
           where: { id: internalOrderId },
           data: {
             paymentStatus: PaymentStatus.PAID,
@@ -85,6 +86,7 @@ export async function POST(req: NextRequest) {
         console.log(`Webhook: Order ${internalOrderId} updated to PAID and PENDING_PREPARATION.`);
         revalidatePath('/admin/orders');
         revalidatePath(`/order/confirmation/${internalOrderId}`);
+        broadcastOrderUpdate(updatedOrder.id, updatedOrder.status);
       } else if (currentOrder && currentOrder.paymentStatus === PaymentStatus.PAID) {
         console.log(`Webhook: Order ${internalOrderId} already marked as PAID. Ignoring event.`);
       } else if (!currentOrder) {

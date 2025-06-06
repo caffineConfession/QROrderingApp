@@ -1,4 +1,4 @@
-
+// src/app/admin/orders/actions.ts
 "use server";
 
 import prisma from "@/lib/prisma";
@@ -8,6 +8,8 @@ import { cookies } from "next/headers";
 import { decryptSession } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import type { Order, OrderItem } from "@prisma/client";
+import { broadcastOrderUpdate } from "@/lib/websocket";
+
 
 export interface ProcessableOrder extends Order {
   items: OrderItem[];
@@ -183,6 +185,9 @@ export async function updateOrderStatusAction(
         revalidatePath("/admin/products");
     }
 
+    // Broadcast the update
+    broadcastOrderUpdate(orderId, newStatus);
+
     return { success: true };
 
   } catch (error) {
@@ -196,4 +201,3 @@ export async function updateOrderStatusAction(
     return { success: false, error: "Failed to update order status due to an unexpected error." };
   }
 }
-

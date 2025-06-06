@@ -1,4 +1,4 @@
-
+// src/app/admin/manual-order/actions.ts
 "use server";
 
 import prisma from "@/lib/prisma";
@@ -10,6 +10,8 @@ import { cookies } from "next/headers";
 import { decryptSession } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import { COFFEE_FLAVORS_BASE, SHAKE_FLAVORS_BASE } from '@/lib/constants';
+import { broadcastOrderUpdate } from "@/lib/websocket";
+
 
 // Assuming COFFEE_FLAVORS_BASE and SHAKE_FLAVORS_BASE use ItemCategory from @/types
 const ALL_MENU_ITEMS_FLAT = [
@@ -71,6 +73,8 @@ export async function createManualOrderAction(
     revalidatePath("/admin/orders");
     revalidatePath("/admin/manual-order");
     // No longer revalidating product paths here as stock isn't changed.
+
+    broadcastOrderUpdate(newOrder.id, newOrder.status);
 
     return { success: true, orderId: newOrder.id };
 
@@ -158,7 +162,7 @@ export async function confirmCashPaymentAction(orderId: string): Promise<{ succe
             return { success: false, error: "Order not eligible for payment confirmation." };
         }
 
-        await prisma.order.update({
+        const updatedOrder = await prisma.order.update({
             where: {
               id: orderId,
             },
@@ -173,6 +177,8 @@ export async function confirmCashPaymentAction(orderId: string): Promise<{ succe
         revalidatePath("/admin/manual-order"); // For the pending orders list
         revalidatePath("/admin/orders"); // For the main orders list
         // No longer revalidating product paths here as stock isn't changed.
+
+        broadcastOrderUpdate(updatedOrder.id, updatedOrder.status);
 
         return { success: true };
 
