@@ -1,4 +1,6 @@
 
+console.log("--- prisma/seed.ts execution started ---"); // Debug: Top-level log
+
 import { PrismaClient, ItemCategory, ItemServingType, AdminRole } from '@prisma/client';
 import bcryptjs from 'bcryptjs';
 
@@ -99,7 +101,7 @@ async function seedDatabase(prisma: PrismaClient, dbName: string) {
       });
       console.log(`[${dbName}] Upserted admin user: ${user.email} with role ${user.role}`);
     } catch (e: any) {
-      console.error(`[${dbName}] Error upserting admin user ${userData.email}: ${e.message}`);
+      console.error(`[${dbName}] Error upserting admin user ${userData.email}: ${e.message}`, e.stack);
     }
   }
   console.log(`[${dbName}] Admin users seeding finished.`);
@@ -109,7 +111,7 @@ async function seedDatabase(prisma: PrismaClient, dbName: string) {
     const { menuItems, ...baseProductData } = productData;
     try {
       const product = await prisma.product.upsert({
-        where: { name: baseProductData.name },
+        where: { name: baseProductData.name }, // Ensure 'name' is unique in Product schema
         update: {
           ...baseProductData,
         },
@@ -145,12 +147,12 @@ async function seedDatabase(prisma: PrismaClient, dbName: string) {
             });
             console.log(`[${dbName}]   Upserted menu item for ${product.name}: ${item.servingType}, Price: ${item.price}, Stock: ${item.stockQuantity}, Available: ${item.isAvailable}`);
           } catch (e: any) {
-            console.error(`[${dbName}] Error upserting menu item ${menuItemData.servingType} for product ${product.name}: ${e.message}`);
+            console.error(`[${dbName}] Error upserting menu item ${menuItemData.servingType} for product ${product.name}: ${e.message}`, e.stack);
           }
         }
       }
     } catch (e: any) {
-      console.error(`[${dbName}] Error upserting product ${baseProductData.name}: ${e.message}`);
+      console.error(`[${dbName}] Error upserting product ${baseProductData.name}: ${e.message}`, e.stack);
     }
   }
   console.log(`[${dbName}] Products and menu items seeding finished.`);
@@ -158,15 +160,22 @@ async function seedDatabase(prisma: PrismaClient, dbName: string) {
 }
 
 async function main() {
+  console.log("--- main() function in seed.ts started ---"); // Debug: Log main function start
+
   // Seed primary database
-  const prismaPrimary = new PrismaClient();
+  console.log("Attempting to instantiate PrismaClient for Primary DB...");
+  const prismaPrimary = new PrismaClient(); // Uses DATABASE_URL from env
+  console.log("PrismaClient for Primary DB instantiated.");
   try {
+    if (!process.env.DATABASE_URL) {
+      console.error("CRITICAL: DATABASE_URL is not defined in the seed script's main function for primary DB!");
+    }
     await seedDatabase(prismaPrimary, "Primary DB (DATABASE_URL)");
   } catch (e: any) {
-    console.error("Error during primary database seeding process:", e.message);
+    console.error("Error during primary database seeding process in main():", e.message, e.stack);
   } finally {
     await prismaPrimary.$disconnect();
-    console.log("Primary Prisma Client disconnected.");
+    console.log("Primary Prisma Client disconnected from main().");
   }
 
   // Seed secondary database if URL is provided and different from primary
@@ -175,6 +184,7 @@ async function main() {
 
   if (secondaryDbUrl && secondaryDbUrl.trim() !== "" && secondaryDbUrl !== primaryDbUrl) {
     console.log("\nFound DATABASE_URL_SECONDARY, attempting to seed secondary database.");
+    console.log("Attempting to instantiate PrismaClient for Secondary DB...");
     const prismaSecondary = new PrismaClient({
       datasources: {
         db: {
@@ -182,13 +192,14 @@ async function main() {
         },
       },
     });
+    console.log("PrismaClient for Secondary DB instantiated.");
     try {
       await seedDatabase(prismaSecondary, "Secondary DB (DATABASE_URL_SECONDARY)");
     } catch (e: any) {
-      console.error("Error during secondary database seeding process:", e.message);
+      console.error("Error during secondary database seeding process in main():", e.message, e.stack);
     } finally {
       await prismaSecondary.$disconnect();
-      console.log("Secondary Prisma Client disconnected.");
+      console.log("Secondary Prisma Client disconnected from main().");
     }
   } else if (secondaryDbUrl && secondaryDbUrl === primaryDbUrl) {
     console.log("\nDATABASE_URL_SECONDARY is the same as DATABASE_URL. Skipping redundant seeding of secondary database.");
@@ -196,15 +207,18 @@ async function main() {
     console.log("\nDATABASE_URL_SECONDARY not found or empty. Skipping seeding of secondary database.");
   }
 
-  console.log("\nAll seeding functions invocation completed.");
+  console.log("\n--- All seeding functions in main() invocation completed. ---");
 }
 
 main()
   .then(() => {
-    console.log('Seeding script execution finished.');
+    console.log('--- Seeding script main() promise resolved. Execution finished. ---');
     process.exit(0);
   })
   .catch(async (e) => {
-    console.error('Critical error in main seed runner:', e);
+    console.error('--- Critical error in main seed runner (main promise rejected): ---', e.message, e.stack);
     process.exit(1);
   });
+
+console.log("--- prisma/seed.ts execution reached end of file ---"); // Debug: Bottom-level log
+CDATA
