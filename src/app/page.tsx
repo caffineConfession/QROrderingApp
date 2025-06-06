@@ -2,9 +2,8 @@
 "use client";
 
 import { useState, useMemo, useEffect } from 'react';
-import type { ProductMenuItem, ItemServingType, CartItemClient, CustomerDetails, PaymentMethod, AllRatingsSubmissionData } from '@/types';
+import type { CartItemClient, CustomerDetails, PaymentMethod, AllRatingsSubmissionData, ProductWithMenuDetails, MenuItemDetail as PrismaMenuItemDetail } from '@/types';
 import { MENU_CATEGORIES_MAP, ItemCategory } from '@/types'; 
-import { ALL_MENU_ITEMS } from '@/lib/constants'; 
 import Header from '@/components/Header';
 import MenuItemCard from '@/components/MenuItemCard';
 import OrderCart from '@/components/OrderCart';
@@ -14,13 +13,15 @@ import Footer from '@/components/Footer';
 import RatingForm from '@/components/RatingForm'; 
 import { useToast } from "@/hooks/use-toast";
 import { Button } from '@/components/ui/button';
-import { AlertCircle, CheckCircle2, Star } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Star, ShoppingBag, Coffee } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Skeleton } from '@/components/ui/skeleton';
 import { submitCustomerOrderAction } from '@/app/actions/order-actions';
 import { submitAllRatingsAction } from '@/app/actions/rating-actions'; 
+import { getDisplayMenuAction } from '@/app/actions/menu-actions';
 
 
 type AppState = "menu" | "checkout" | "confirmation";
@@ -41,34 +42,112 @@ export default function HomePage() {
   const [isSubmittingInternalOrder, setIsSubmittingInternalOrder] = useState(false);
   const [hasRated, setHasRated] = useState(false); 
 
-  const handleAddToCart = (item: ProductMenuItem, servingType: ItemServingType, price: number) => {
-    const cartItemId = `${item.id}-${servingType}-${Date.now()}`; 
+  const [products, setProducts] = useState<ProductWithMenuDetails[]>([]);
+  const [isLoadingMenu, setIsLoadingMenu] = useState(true);
+  const [menuError, setMenuError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchMenu = async () => {
+      setIsLoadingMenu(true);
+      setMenuError(null);
+      try {
+        const result = await getDisplayMenuAction();
+        if (result.success && result.products) {
+          setProducts(result.products);
+        } else {
+          setMenuError(result.error || "Failed to load menu items.");
+          setProducts([]);
+        }
+      } catch (error) {
+        console.error("Error fetching menu:", error);
+        setMenuError("An unexpected error occurred while fetching the menu.");
+        setProducts([]);
+      } finally {
+        setIsLoadingMenu(false);
+      }
+    };
+    fetchMenu();
+  }, []);
+
+  const handleAddToCart = (product: ProductWithMenuDetails, selectedMenuItem: PrismaMenuItemDetail) => {
+    const cartItemId = `${product.id}-${selectedMenuItem.servingType}-${Date.now()}`; 
+    
     setCartItems(prevItems => {
       const existingItemIndex = prevItems.findIndex(
-        ci => ci.id === item.id && ci.servingType === servingType && ci.customization === "normal"
+        ci => ci.productId === product.id && 
+              ci.servingType === selectedMenuItem.servingType && 
+              ci.customization === "normal" // Assuming 'normal' is default
       );
+
       if (existingItemIndex > -1) {
+        const updatedItem = { 
+          ...prevItems[existingItemIndex], 
+          quantity: prevItems[existingItemIndex].quantity + 1 
+        };
+        // Ensure stock check for incrementing quantity as well (simplified here)
+        if (updatedItem.quantity > selectedMenuItem.stockQuantity) {
+          toast({
+            title: "Stock Limit Reached",
+            description: `Cannot add more ${product.name} (${selectedMenuItem.servingType}). Max available: ${selectedMenuItem.stockQuantity}.`,
+            variant: "destructive",
+          });
+          return prevItems; // Don't update if stock limit is exceeded
+        }
         return prevItems.map((ci, index) =>
-          index === existingItemIndex ? { ...ci, quantity: ci.quantity + 1 } : ci
+          index === existingItemIndex ? updatedItem : ci
         );
       }
-      return [...prevItems, { ...item, servingType, quantity: 1, price, cartItemId, customization: "normal" }];
+      // Add as new item
+      if (selectedMenuItem.stockQuantity < 1) {
+         toast({
+            title: "Out of Stock",
+            description: `${product.name} (${selectedMenuItem.servingType}) is currently out of stock.`,
+            variant: "destructive",
+          });
+        return prevItems;
+      }
+      return [...prevItems, { 
+        cartItemId,
+        productId: product.id,
+        menuItemId: selectedMenuItem.id,
+        name: product.name,
+        category: product.category,
+        servingType: selectedMenuItem.servingType,
+        price: selectedMenuItem.price,
+        quantity: 1,
+        customization: "normal",
+        imageHint: product.imageHint || null,
+        isAvailable: selectedMenuItem.isAvailable, // Availability at time of adding
+        stockQuantity: selectedMenuItem.stockQuantity, // Stock at time of adding
+      }];
     });
     toast({
       title: "Added to cart!",
-      description: `${item.name} (${servingType}) has been added to your cart.`,
+      description: `${product.name} (${selectedMenuItem.servingType}) has been added.`,
     });
   };
 
+
   const handleUpdateQuantity = (cartItemId: string, newQuantity: number) => {
-    if (newQuantity < 1) {
-      handleRemoveItem(cartItemId);
-      return;
-    }
     setCartItems(prevItems =>
-      prevItems.map(item =>
-        item.cartItemId === cartItemId ? { ...item, quantity: newQuantity } : item
-      )
+      prevItems.map(item => {
+        if (item.cartItemId === cartItemId) {
+          if (newQuantity < 1) {
+            // This will be caught by the filter later, but good to be explicit
+            return item; // or handle removal directly here
+          }
+          if (newQuantity > item.stockQuantity) { // Check against stock at time of adding
+            toast({
+              title: "Stock Limit Reached",
+              description: `Max available quantity for ${item.name} (${item.servingType}) is ${item.stockQuantity}.`,
+              variant: "destructive",
+            });
+            return { ...item, quantity: item.stockQuantity }; // Cap at available stock
+          }
+          return { ...item, quantity: newQuantity };
+        }
+        return item;
+      }).filter(item => item.quantity > 0) // Ensure items with quantity 0 are removed
     );
   };
 
@@ -93,25 +172,33 @@ export default function HomePage() {
       });
       return;
     }
+    // Additional check: verify if any cart item now exceeds available stock (if stock could change)
+    // For simplicity, we'll rely on initial add-to-cart checks and the server-side pre-order check.
     setAppState("checkout");
   };
 
-  // This function is passed to CheckoutForm for creating the internal order
   const handleSubmitInternalOrder = async (customerDetails: CustomerDetails, paymentMethod: PaymentMethod.Cash | PaymentMethod.Razorpay) => {
     setIsSubmittingInternalOrder(true);
     const totalAmount = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
     
     const orderData = {
       customerDetails,
-      items: cartItems,
+      items: cartItems.map(ci => ({ // Transform CartItemClient to the structure expected by submitCustomerOrderAction
+        productId: ci.productId,
+        menuItemId: ci.menuItemId,
+        name: ci.name,
+        category: ci.category,
+        servingType: ci.servingType,
+        quantity: ci.quantity,
+        priceAtPurchase: ci.price,
+        customization: ci.customization,
+      })),
       totalAmount,
       paymentMethod,
     };
 
     try {
       const result = await submitCustomerOrderAction(orderData);
-      // The result now includes orderId, totalAmount, and paymentMethod which are needed by CheckoutForm
-      // for Razorpay flow or direct confirmation for Cash.
       return result; 
     } catch (error) {
       console.error("Error submitting internal order:", error);
@@ -126,13 +213,12 @@ export default function HomePage() {
     }
   };
 
-  // This function is called by CheckoutForm after payment is successful (either cash or Razorpay verified)
   const handlePaymentSuccess = (
     confirmedOrder: { orderId: string, paymentMethod: PaymentMethod, customerDetails: CustomerDetails, totalAmount: number }
   ) => {
     const finalOrder: ConfirmedOrderDetails = {
       ...confirmedOrder.customerDetails,
-      items: cartItems, // cartItems from HomePage state
+      items: cartItems, 
       totalAmount: confirmedOrder.totalAmount,
       paymentMethod: confirmedOrder.paymentMethod,
       orderId: confirmedOrder.orderId,
@@ -173,9 +259,54 @@ export default function HomePage() {
   };
 
 
-  const coffeeItems = useMemo(() => ALL_MENU_ITEMS.filter(item => item.category === ItemCategory.COFFEE), []);
-  const shakeItems = useMemo(() => ALL_MENU_ITEMS.filter(item => item.category === ItemCategory.SHAKES), []);
+  const coffeeItems = useMemo(() => products.filter(item => item.category === ItemCategory.COFFEE), [products]);
+  const shakeItems = useMemo(() => products.filter(item => item.category === ItemCategory.SHAKES), [products]);
   const cartTotal = useMemo(() => cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0), [cartItems]);
+
+  const renderMenuSection = (titleIcon: React.ReactNode, title: string, items: ProductWithMenuDetails[]) => {
+    if (isLoadingMenu) {
+      return (
+        <div>
+          <h2 className="text-3xl font-bold mb-6 text-primary border-b-2 border-primary pb-2 flex items-center">
+            {titleIcon} {title}
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            {[1, 2, 3].map(i => (
+              <Card key={i} className="w-full max-w-sm shadow-lg rounded-xl overflow-hidden">
+                <Skeleton className="h-48 w-full" />
+                <CardHeader><Skeleton className="h-6 w-3/4" /></CardHeader>
+                <CardContent><Skeleton className="h-10 w-full" /></CardContent>
+                <CardFooter><Skeleton className="h-10 w-full" /></CardFooter>
+              </Card>
+            ))}
+          </div>
+        </div>
+      );
+    }
+    if (items.length === 0 && !menuError) { // Don't show "no items" if there was a general menu error
+        return (
+             <div>
+                <h2 className="text-3xl font-bold mb-6 text-primary border-b-2 border-primary pb-2 flex items-center">
+                    {titleIcon} {title}
+                </h2>
+                <p className="text-muted-foreground">No {title.toLowerCase()} available at the moment. Please check back later!</p>
+            </div>
+        );
+    }
+
+    return (
+      <div>
+        <h2 className="text-3xl font-bold mb-6 text-primary border-b-2 border-primary pb-2 flex items-center">
+          {titleIcon} {title}
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+          {items.map(product => (
+            <MenuItemCard key={product.id} product={product} onAddToCart={handleAddToCart} />
+          ))}
+        </div>
+      </div>
+    );
+  };
 
 
   return (
@@ -190,22 +321,16 @@ export default function HomePage() {
               </section>
               
               <section id="menu">
-                <div>
-                  <h2 className="text-3xl font-bold mb-6 text-primary border-b-2 border-primary pb-2">{MENU_CATEGORIES_MAP.COFFEE}</h2>
-                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                    {coffeeItems.map(item => (
-                      <MenuItemCard key={item.id} item={item} onAddToCart={handleAddToCart} />
-                    ))}
-                  </div>
-                </div>
-
+                {menuError && (
+                    <Alert variant="destructive" className="mb-8">
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertTitle>Error Loading Menu</AlertTitle>
+                        <AlertDescription>{menuError}</AlertDescription>
+                    </Alert>
+                )}
+                {renderMenuSection(<Coffee className="mr-2 h-7 w-7"/>, MENU_CATEGORIES_MAP.COFFEE, coffeeItems)}
                 <div className="mt-12">
-                  <h2 className="text-3xl font-bold mb-6 text-primary border-b-2 border-primary pb-2">{MENU_CATEGORIES_MAP.SHAKES}</h2>
-                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                    {shakeItems.map(item => (
-                      <MenuItemCard key={item.id} item={item} onAddToCart={handleAddToCart} />
-                    ))}
-                  </div>
+                  {renderMenuSection(<ShoppingBag className="mr-2 h-7 w-7"/>, MENU_CATEGORIES_MAP.SHAKES, shakeItems)}
                 </div>
               </section>
             </div>
