@@ -1,129 +1,117 @@
-// prisma/schema.prisma
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_SECONDARY") // For Prisma Migrate on secondary (if needed)
 }
 
 generator client {
   provider = "prisma-client-js"
 }
 
-model AdminUser {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  passwordHash  String
-  role          AdminRole
-  ordersTaken   Order[]   @relation("TakenBy")
-  ordersProcessed Order[] @relation("ProcessedBy")
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-}
-
 model Product {
-  id            String          @id @default(cuid())
-  name          String          @unique // Ensuring name is unique as required by seed.ts
+  id            String        @id @default(cuid())
+  name          String        @unique // Name of the base product, e.g., "Vanilla Latte"
   description   String?
-  category      ItemCategory
-  isAvailable   Boolean         @default(true)
-  imageHint     String?
-  menuItems     MenuItem[]
-  ratings       ProductRating[]
-  orderItems    OrderItem[]     @relation("OrderItemProduct")
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  category      ItemCategory // COFFEE or SHAKES
+  isAvailable   Boolean       @default(true) // General availability of the product concept
+  imageHint     String?       // Hint for AI image generation, e.g., "vanilla coffee latte art"
+  imageUrl      String?       // Path to the static image, e.g., /images/products/prod_cff_van.png
+  menuItems     MenuItem[]    // Specific serving types, prices, stock for this product
+  orderItems    OrderItem[]   // References in past orders
+  ratings       ProductRating[] // Ratings for this product
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 }
 
 model MenuItem {
   id            String          @id @default(cuid())
-  product       Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
   productId     String
-  servingType   ItemServingType
+  product       Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  servingType   ItemServingType // e.g., Cup, Cone
   price         Float
   stockQuantity Int             @default(0)
-  isAvailable   Boolean         @default(true)
-  orderItems    OrderItem[]     @relation("OrderItemMenuItem")
+  isAvailable   Boolean         @default(true) // Availability of this specific serving variant
+  orderItems    OrderItem[]
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
-  @@unique([productId, servingType])
-  @@index([productId])
+  @@unique([productId, servingType]) // Ensures a product can't have the same serving type twice
 }
 
 model Order {
-  id                          String            @id @default(cuid())
-  customerName                String?
-  customerPhone               String?
-  customerEmail               String?
-  totalAmount                 Float
-  items                       OrderItem[]
-  paymentMethod               PaymentMethod
-  paymentStatus               PaymentStatus     @default(PENDING)
-  status                      OrderStatus       @default(AWAITING_PAYMENT_CONFIRMATION)
-  orderSource                 OrderSource
-  takenBy                     AdminUser?        @relation("TakenBy", fields: [takenById], references: [id])
-  takenById                   String?
-  processedBy                 AdminUser?        @relation("ProcessedBy", fields: [processedById], references: [id])
-  processedById               String?
-  gatewayOrderId              String?           @unique // Adding unique constraint as per db push attempt
-  gatewayPaymentId            String?           @unique // Adding unique constraint as per db push attempt
-  experienceRating            ExperienceRating?
-  productRatings              ProductRating[]
-  createdAt                   DateTime          @default(now())
-  updatedAt                   DateTime          @updatedAt
-
-  @@index([takenById])
-  @@index([processedById])
+  id                         String        @id @default(cuid())
+  customerName               String?
+  customerPhone              String?
+  customerEmail              String?
+  totalAmount                Float
+  items                      OrderItem[]
+  status                     OrderStatus   @default(PENDING_PREPARATION)
+  paymentMethod              PaymentMethod
+  paymentStatus              PaymentStatus @default(PENDING)
+  gatewayOrderId             String?       @unique // Razorpay order_id
+  gatewayPaymentId           String?       @unique // Razorpay payment_id
+  orderSource                OrderSource   @default(CUSTOMER_ONLINE)
+  takenById                  String?       // AdminUser email who took/created the order (for STAFF_MANUAL)
+  takenBy                    AdminUser?    @relation("TakenByOrders", fields: [takenById], references: [email], onDelete: SetNull, onUpdate: Cascade)
+  processedById              String?       // AdminUser email who last processed/updated the order status
+  processedBy                AdminUser?    @relation("ProcessedByOrders", fields: [processedById], references: [email], onDelete: SetNull, onUpdate: Cascade)
+  experienceRating           ExperienceRating[]
+  productRatings             ProductRating[]
+  createdAt                  DateTime      @default(now())
+  updatedAt                  DateTime      @updatedAt
 }
 
 model OrderItem {
   id              String          @id @default(cuid())
-  order           Order           @relation(fields: [orderId], references: [id])
   orderId         String
-  productId       String
-  productName     String          // Denormalized
+  order           Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId       String          // ID of the base Product
+  product         Product         @relation(fields: [productId], references: [id], onDelete: Restrict) // Prevent product deletion if in orders
+  menuItemId      String          // ID of the specific MenuItem at time of order
+  menuItem        MenuItem        @relation(fields: [menuItemId], references: [id], onDelete: Restrict) // Prevent menuitem deletion if in orders
+  productName     String          // Denormalized for history
   category        ItemCategory    // Denormalized
   servingType     ItemServingType // Denormalized
-  menuItemId      String?         // Optional: ID of the specific MenuItem
-  product         Product?        @relation("OrderItemProduct", fields: [productId], references: [id], onDelete: Restrict)
-  menuItem        MenuItem?       @relation("OrderItemMenuItem", fields: [menuItemId], references: [id], onDelete: Restrict)
   quantity        Int
-  priceAtPurchase Float
-  customization   String?
+  priceAtPurchase Float           // Price of one unit of this item at the time of purchase
+  customization   String?         // e.g., "extra_sweet", "no_ice" (can be JSON string for complex options)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
 
-  @@index([orderId])
-  @@index([productId])
-  @@index([menuItemId])
+model AdminUser {
+  id                  String    @id @default(cuid())
+  email               String    @unique
+  passwordHash        String
+  role                AdminRole
+  ordersTaken         Order[]   @relation("TakenByOrders")
+  ordersProcessed     Order[]   @relation("ProcessedByOrders")
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 }
 
 model ExperienceRating {
   id        String   @id @default(cuid())
-  order     Order    @relation(fields: [orderId], references: [id])
-  orderId   String   @unique
-  rating    Int
+  orderId   String   @unique // One overall rating per order
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  rating    Int // 1-5
   comment   String?
   createdAt DateTime @default(now())
 }
 
 model ProductRating {
   id          String   @id @default(cuid())
-  order       Order    @relation(fields: [orderId], references: [id])
   orderId     String
-  product     Product  @relation(fields: [productId], references: [id])
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   productId   String
-  productName String   // Denormalized
-  rating      Int
-  comment   String?
-  createdAt DateTime @default(now())
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productName String   // Denormalized product name at time of rating
+  rating      Int // 1-5
+  comment     String?
+  createdAt   DateTime @default(now())
 
-  @@index([orderId])
-  @@index([productId])
-}
-
-enum AdminRole {
-  MANUAL_ORDER_TAKER
-  ORDER_PROCESSOR
-  BUSINESS_MANAGER
+  @@unique([orderId, productId]) // A user can rate a specific product within an order only once
 }
 
 enum ItemCategory {
@@ -149,7 +137,6 @@ enum OrderStatus {
   READY_FOR_PICKUP
   COMPLETED
   CANCELLED
-  // PENDING and RECEIVED are removed based on previous 'db push' output
 }
 
 enum PaymentStatus {
@@ -163,3 +150,12 @@ enum OrderSource {
   CUSTOMER_ONLINE
   STAFF_MANUAL
 }
+
+enum AdminRole {
+  MANUAL_ORDER_TAKER
+  ORDER_PROCESSOR
+  BUSINESS_MANAGER
+}
+
+// Note: CustomizationType is used in app logic (src/types) but not directly as a Prisma enum here.
+// It's stored as a String in OrderItem.customization.

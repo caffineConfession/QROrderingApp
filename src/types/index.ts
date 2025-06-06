@@ -64,6 +64,7 @@ export enum OrderSource {
 // Type for product with its menu items (serving types, prices, stock) from DB
 export interface ProductWithMenuDetails extends PrismaProduct {
   menuItems: PrismaMenuItem[];
+  // imageUrl is part of PrismaProduct type due to schema change
 }
 
 // Represents an item in the customer's shopping cart on the client-side
@@ -78,6 +79,7 @@ export interface CartItemClient {
   quantity: number;
   customization: CustomizationType;
   imageHint: string | null; // From Product
+  imageUrl: string | null; // From Product
   isAvailable: boolean; // Availability of this specific MenuItem
   stockQuantity: number; // Stock of this specific MenuItem
 }
@@ -118,6 +120,7 @@ export interface ManualOrderCartItem {
   quantity: number;
   customization: CustomizationType;
   imageHint: string | null;
+  imageUrl: string | null; // Added for consistency
 }
 
 // Data structure for when staff submits a manual order
@@ -179,12 +182,14 @@ export interface ProductComment extends ExperienceComment {
   productName: string;
 }
 
-// Old ProductMenuItem - Deprecate in favor of ProductWithMenuDetails
-// export interface ProductMenuItem { 
-//   id: string; 
-//   name: string;
-//   category: ItemCategory; 
-//   categoryDisplay: ItemCategoryValue; 
-//   imageHint: string;
-//   prices: Record<ItemServingType, number>; 
-// }
+// Old ProductMenuItem definition structure from constants.ts for reference.
+// The app primarily uses ProductWithMenuDetails fetched from DB.
+export interface ProductConstantItem { 
+  id: string; 
+  name: string;
+  category: ItemCategory; 
+  imageHint: string; // From Product
+  imageUrl: string | null; // From Product
+  categoryDisplay: ItemCategoryValue; 
+  prices: Record<ItemServingType, number>; 
+}

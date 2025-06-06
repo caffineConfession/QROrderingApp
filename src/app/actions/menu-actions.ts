@@ -8,6 +8,7 @@ export interface MenuItemDetail extends MenuItem {}
 
 export interface ProductWithMenuDetails extends Product {
   menuItems: MenuItemDetail[];
+  // imageUrl is already part of Prisma Product, so it will be included by default
 }
 
 export async function getDisplayMenuAction(): Promise<{ success: boolean; products?: ProductWithMenuDetails[]; error?: string; }> {
@@ -31,7 +32,8 @@ export async function getDisplayMenuAction(): Promise<{ success: boolean; produc
         { name: 'asc' }
       ]
     });
-    return { success: true, products: products as ProductWithMenuDetails[] };
+    // No need to cast to ProductWithMenuDetails if Product already includes imageUrl
+    return { success: true, products: products };
   } catch (error) {
     console.error("Error fetching display menu:", error);
     if (error instanceof Error) {

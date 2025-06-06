@@ -117,6 +117,7 @@ export default function HomePage() {
         quantity: 1,
         customization: "normal",
         imageHint: product.imageHint || null,
+        imageUrl: product.imageUrl || null, // Added imageUrl
         isAvailable: selectedMenuItem.isAvailable, // Availability at time of adding
         stockQuantity: selectedMenuItem.stockQuantity, // Stock at time of adding
       }];
