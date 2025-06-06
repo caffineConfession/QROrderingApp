@@ -2,8 +2,6 @@
 import { PrismaClient, ItemCategory, ItemServingType, AdminRole } from '@prisma/client';
 import bcryptjs from 'bcryptjs';
 
-const prisma = new PrismaClient();
-
 const saltRounds = 10;
 
 // Admin users based on hashPassword.js for consistency
@@ -80,87 +78,133 @@ const productsToSeed = [
   }
 ];
 
+async function seedDatabase(prisma: PrismaClient, dbName: string) {
+  console.log(`\n--- Starting to seed database: ${dbName} ---`);
 
-async function seedAdminUsers() {
-  console.log('Starting to seed admin users...');
+  console.log(`[${dbName}] Starting to seed admin users...`);
   for (const userData of adminUsersToSeed) {
-    const hashedPassword = await bcryptjs.hash(userData.password, saltRounds);
-    const user = await prisma.adminUser.upsert({
-      where: { email: userData.email },
-      update: {
-        passwordHash: hashedPassword,
-        role: userData.role,
-      },
-      create: {
-        email: userData.email,
-        passwordHash: hashedPassword,
-        role: userData.role,
-      },
-    });
-    console.log(`Upserted admin user: ${user.email} with role ${user.role}`);
-  }
-  console.log('Admin users seeding finished.');
-}
-
-async function seedProductsAndMenuItems() {
-  console.log('Starting to seed products and menu items...');
-  for (const productData of productsToSeed) {
-    const { menuItems, ...baseProductData } = productData;
-
-    const product = await prisma.product.upsert({
-      where: { name: baseProductData.name }, 
-      update: {
-        ...baseProductData,
-      },
-      create: {
-        ...baseProductData,
-      },
-    });
-    console.log(`Upserted product: ${product.name} (ID: ${product.id})`);
-
-    if (menuItems && menuItems.length > 0) {
-      for (const menuItemData of menuItems) {
-        const finalAvailability = (menuItemData.stockQuantity > 0) ? menuItemData.isAvailable : false;
-        const item = await prisma.menuItem.upsert({
-          where: {
-            productId_servingType: { 
-              productId: product.id,
-              servingType: menuItemData.servingType,
-            }
-          },
-          update: {
-            price: menuItemData.price,
-            stockQuantity: menuItemData.stockQuantity,
-            isAvailable: finalAvailability,
-          },
-          create: {
-            productId: product.id,
-            servingType: menuItemData.servingType,
-            price: menuItemData.price,
-            stockQuantity: menuItemData.stockQuantity,
-            isAvailable: finalAvailability,
-          },
-        });
-        console.log(`  Upserted menu item for ${product.name}: ${item.servingType}, Price: ${item.price}, Stock: ${item.stockQuantity}, Available: ${item.isAvailable}`);
-      }
+    try {
+      const hashedPassword = await bcryptjs.hash(userData.password, saltRounds);
+      const user = await prisma.adminUser.upsert({
+        where: { email: userData.email },
+        update: {
+          passwordHash: hashedPassword,
+          role: userData.role,
+        },
+        create: {
+          email: userData.email,
+          passwordHash: hashedPassword,
+          role: userData.role,
+        },
+      });
+      console.log(`[${dbName}] Upserted admin user: ${user.email} with role ${user.role}`);
+    } catch (e: any) {
+      console.error(`[${dbName}] Error upserting admin user ${userData.email}: ${e.message}`);
     }
   }
-  console.log('Products and menu items seeding finished.');
+  console.log(`[${dbName}] Admin users seeding finished.`);
+
+  console.log(`[${dbName}] Starting to seed products and menu items...`);
+  for (const productData of productsToSeed) {
+    const { menuItems, ...baseProductData } = productData;
+    try {
+      const product = await prisma.product.upsert({
+        where: { name: baseProductData.name },
+        update: {
+          ...baseProductData,
+        },
+        create: {
+          ...baseProductData,
+        },
+      });
+      console.log(`[${dbName}] Upserted product: ${product.name} (ID: ${product.id})`);
+
+      if (menuItems && menuItems.length > 0) {
+        for (const menuItemData of menuItems) {
+          try {
+            const finalAvailability = (menuItemData.stockQuantity > 0) ? menuItemData.isAvailable : false;
+            const item = await prisma.menuItem.upsert({
+              where: {
+                productId_servingType: {
+                  productId: product.id,
+                  servingType: menuItemData.servingType,
+                }
+              },
+              update: {
+                price: menuItemData.price,
+                stockQuantity: menuItemData.stockQuantity,
+                isAvailable: finalAvailability,
+              },
+              create: {
+                productId: product.id,
+                servingType: menuItemData.servingType,
+                price: menuItemData.price,
+                stockQuantity: menuItemData.stockQuantity,
+                isAvailable: finalAvailability,
+              },
+            });
+            console.log(`[${dbName}]   Upserted menu item for ${product.name}: ${item.servingType}, Price: ${item.price}, Stock: ${item.stockQuantity}, Available: ${item.isAvailable}`);
+          } catch (e: any) {
+            console.error(`[${dbName}] Error upserting menu item ${menuItemData.servingType} for product ${product.name}: ${e.message}`);
+          }
+        }
+      }
+    } catch (e: any) {
+      console.error(`[${dbName}] Error upserting product ${baseProductData.name}: ${e.message}`);
+    }
+  }
+  console.log(`[${dbName}] Products and menu items seeding finished.`);
+  console.log(`--- Seeding database ${dbName} completed ---`);
 }
 
-
 async function main() {
-  await seedAdminUsers();
-  await seedProductsAndMenuItems();
+  // Seed primary database
+  const prismaPrimary = new PrismaClient();
+  try {
+    await seedDatabase(prismaPrimary, "Primary DB (DATABASE_URL)");
+  } catch (e: any) {
+    console.error("Error during primary database seeding process:", e.message);
+  } finally {
+    await prismaPrimary.$disconnect();
+    console.log("Primary Prisma Client disconnected.");
+  }
+
+  // Seed secondary database if URL is provided and different from primary
+  const secondaryDbUrl = process.env.DATABASE_URL_SECONDARY;
+  const primaryDbUrl = process.env.DATABASE_URL;
+
+  if (secondaryDbUrl && secondaryDbUrl.trim() !== "" && secondaryDbUrl !== primaryDbUrl) {
+    console.log("\nFound DATABASE_URL_SECONDARY, attempting to seed secondary database.");
+    const prismaSecondary = new PrismaClient({
+      datasources: {
+        db: {
+          url: secondaryDbUrl,
+        },
+      },
+    });
+    try {
+      await seedDatabase(prismaSecondary, "Secondary DB (DATABASE_URL_SECONDARY)");
+    } catch (e: any) {
+      console.error("Error during secondary database seeding process:", e.message);
+    } finally {
+      await prismaSecondary.$disconnect();
+      console.log("Secondary Prisma Client disconnected.");
+    }
+  } else if (secondaryDbUrl && secondaryDbUrl === primaryDbUrl) {
+    console.log("\nDATABASE_URL_SECONDARY is the same as DATABASE_URL. Skipping redundant seeding of secondary database.");
+  } else {
+    console.log("\nDATABASE_URL_SECONDARY not found or empty. Skipping seeding of secondary database.");
+  }
+
+  console.log("\nAll seeding functions invocation completed.");
 }
 
 main()
-  .then(async () => {
-    await prisma.$disconnect();
-    console.log('Seeding complete and Prisma disconnected.');
+  .then(() => {
+    console.log('Seeding script execution finished.');
+    process.exit(0);
   })
   .catch(async (e) => {
-    console.error('Error during seeding:', e);
-    await prisma.$disconnect();
+    console.error('Critical error in main seed runner:', e);
     process.exit(1);
   });
