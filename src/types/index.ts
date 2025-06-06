@@ -1,4 +1,5 @@
 
+import type { Product as PrismaProduct, MenuItem as PrismaMenuItem } from "@prisma/client";
 
 export const MENU_CATEGORIES_MAP = {
   COFFEE: "Blended Cold Coffee",
@@ -60,24 +61,25 @@ export enum OrderSource {
   STAFF_MANUAL = "STAFF_MANUAL", // Order placed manually by staff
 }
 
-
-// App-specific types
-export interface ProductMenuItem { 
-  id: string; 
-  name: string;
-  category: ItemCategory; 
-  categoryDisplay: ItemCategoryValue; 
-  imageHint: string;
-  prices: Record<ItemServingType, number>; 
+// Type for product with its menu items (serving types, prices, stock) from DB
+export interface ProductWithMenuDetails extends PrismaProduct {
+  menuItems: PrismaMenuItem[];
 }
 
 // Represents an item in the customer's shopping cart on the client-side
-export interface CartItemClient extends ProductMenuItem {
-  cartItemId: string; 
-  servingType: ItemServingType;
+export interface CartItemClient {
+  cartItemId: string; // Unique ID for the cart line item (client-generated)
+  productId: string; // ID of the base product
+  menuItemId: string; // ID of the specific Prisma MenuItem (product+servingType combination)
+  name: string; // Product name
+  category: ItemCategory; // Product category
+  servingType: ItemServingType; // Chosen serving type
+  price: number; // Price for this specific servingType from MenuItem
   quantity: number;
-  price: number; // price per unit for this specific serving type at time of adding to cart
   customization: CustomizationType;
+  imageHint: string | null; // From Product
+  isAvailable: boolean; // Availability of this specific MenuItem
+  stockQuantity: number; // Stock of this specific MenuItem
 }
 
 
@@ -90,8 +92,9 @@ export interface CustomerDetails {
 // Data structure for when a customer submits their order from the main app
 export interface OrderToSubmit { 
   customerDetails: CustomerDetails;
-  items: { // This structure needs to map from CartItemClient
+  items: { 
     productId: string;
+    menuItemId: string; // Important: ID of the specific MenuItem
     name: string; 
     category: ItemCategory;
     servingType: ItemServingType;
@@ -100,7 +103,7 @@ export interface OrderToSubmit {
     customization: CustomizationType;
   }[];
   totalAmount: number;
-  paymentMethod: PaymentMethod.Cash | PaymentMethod.Razorpay; // Only these are available to customers online
+  paymentMethod: PaymentMethod.Cash | PaymentMethod.Razorpay; 
 }
 
 
@@ -114,14 +117,14 @@ export interface ManualOrderCartItem {
   price: number; 
   quantity: number;
   customization: CustomizationType;
-  imageHint: string;
+  imageHint: string | null;
 }
 
 // Data structure for when staff submits a manual order
 export interface ManualOrderSubmitData {
   customerName: string;
   customerPhone: string;
-  paymentMethod: PaymentMethod.Cash | PaymentMethod.UPI; // Staff can take UPI or Cash
+  paymentMethod: PaymentMethod.Cash | PaymentMethod.UPI; 
   items: {
     productId: string; 
     quantity: number;
@@ -153,7 +156,7 @@ export interface PendingCashOrderView {
 // Rating types
 export interface ProductRatingSubmission {
   productId: string;
-  productName: string; // Denormalized for display consistency
+  productName: string; 
   rating: number; // 1-5
   comment?: string;
 }
@@ -176,3 +179,12 @@ export interface ProductComment extends ExperienceComment {
   productName: string;
 }
 
+// Old ProductMenuItem - Deprecate in favor of ProductWithMenuDetails
+// export interface ProductMenuItem { 
+//   id: string; 
+//   name: string;
+//   category: ItemCategory; 
+//   categoryDisplay: ItemCategoryValue; 
+//   imageHint: string;
+//   prices: Record<ItemServingType, number>; 
+// }
