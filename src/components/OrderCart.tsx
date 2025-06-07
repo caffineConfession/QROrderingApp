@@ -20,7 +20,6 @@ interface OrderCartProps {
 
 const CartItemDisplay: React.FC<{ item: CartItemClient }> = ({ item }) => {
   const [imageError, setImageError] = useState(false);
-  const imageSrc = item.imageUrl || `https://placehold.co/60x60.png?text=${encodeURIComponent(item.name)}`;
 
   return (
     <div className="flex items-center gap-3">
@@ -35,7 +34,7 @@ const CartItemDisplay: React.FC<{ item: CartItemClient }> = ({ item }) => {
             alt={item.name} 
             width={50} 
             height={50} 
-            objectFit="cover"
+            style={{ objectFit: "cover" }}
             className="rounded-md"
             onError={() => setImageError(true)}
           />

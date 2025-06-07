@@ -42,7 +42,6 @@ export default function MenuItemCard({ product, onAddToCart }: MenuItemCardProps
     return IceCreamBowlIcon; 
   };
 
-  const imageSrc = product.imageUrl || `https://placehold.co/300x200.png?text=${encodeURIComponent(product.name)}`;
   const [imageError, setImageError] = useState(false);
 
   return (
@@ -58,9 +57,11 @@ export default function MenuItemCard({ product, onAddToCart }: MenuItemCardProps
             <Image
               src={product.imageUrl}
               alt={product.name}
-              layout="fill"
-              objectFit="cover"
+              fill
+              style={{ objectFit: "cover" }}
               onError={() => setImageError(true)}
+              priority={product.category === ItemCategory.COFFEE} // Example: Prioritize coffee images
+              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
             />
           )}
            {!product.isAvailable && (

@@ -22,9 +22,10 @@ export default function AboutUsPage() {
               <Image 
                 src="https://placehold.co/800x600.png" 
                 alt="Caffico Cafe Interior" 
-                layout="fill" 
-                objectFit="cover"
+                fill
+                style={{ objectFit: "cover" }}
                 data-ai-hint="cafe interior"
+                priority
               />
             </div>
             <div className="p-6 md:p-10">
