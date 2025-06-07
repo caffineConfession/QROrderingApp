@@ -1,8 +1,8 @@
 
 "use client";
 
-import React, { useState } from 'react'; // Added useState
-import type { CartItemClient } from '@/types'; // Corrected type import name
+import React, { useState } from 'react';
+import type { CartItemClient } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -11,10 +11,11 @@ import { PlusCircle, MinusCircle, Trash2, ShoppingCart, ImageOff } from 'lucide-
 import Image from 'next/image';
 
 interface OrderCartProps {
-  cartItems: CartItemClient[]; // Corrected type
+  cartItems: CartItemClient[];
   onUpdateQuantity: (cartItemId: string, newQuantity: number) => void;
   onRemoveItem: (cartItemId: string) => void;
   onProceedToCheckout: () => void;
+  isSheet?: boolean; // To indicate if it's used in a Sheet (Navbar cart)
 }
 
 const CartItemDisplay: React.FC<{ item: CartItemClient }> = ({ item }) => {
@@ -49,16 +50,18 @@ const CartItemDisplay: React.FC<{ item: CartItemClient }> = ({ item }) => {
 };
 
 
-export default function OrderCart({ cartItems, onUpdateQuantity, onRemoveItem, onProceedToCheckout }: OrderCartProps) {
+export default function OrderCart({ cartItems, onUpdateQuantity, onRemoveItem, onProceedToCheckout, isSheet = false }: OrderCartProps) {
   const totalAmount = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
   if (cartItems.length === 0) {
     return (
-      <Card className="shadow-lg rounded-xl">
-        <CardHeader>
-          <CardTitle className="flex items-center text-xl"><ShoppingCart className="mr-2 h-6 w-6 text-primary" /> Your Cart</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <Card className={`shadow-lg rounded-xl ${isSheet ? 'border-0 shadow-none' : ''}`}>
+        {!isSheet && (
+            <CardHeader>
+            <CardTitle className="flex items-center text-xl"><ShoppingCart className="mr-2 h-6 w-6 text-primary" /> Your Cart</CardTitle>
+            </CardHeader>
+        )}
+        <CardContent className={isSheet ? 'pt-0' : ''}>
           <p className="text-muted-foreground text-center py-8">Your cart is empty. Add some items to get started!</p>
         </CardContent>
       </Card>
@@ -66,31 +69,32 @@ export default function OrderCart({ cartItems, onUpdateQuantity, onRemoveItem, o
   }
 
   return (
-    <Card className="shadow-lg rounded-xl">
-      <CardHeader>
-        <CardTitle className="flex items-center text-xl"><ShoppingCart className="mr-2 h-6 w-6 text-primary" /> Your Cart</CardTitle>
-      </CardHeader>
+    <Card className={`shadow-lg rounded-xl ${isSheet ? 'border-0 shadow-none bg-transparent' : ''}`}>
+       {!isSheet && (
+            <CardHeader>
+                <CardTitle className="flex items-center text-xl"><ShoppingCart className="mr-2 h-6 w-6 text-primary" /> Your Cart</CardTitle>
+            </CardHeader>
+       )}
       <CardContent className="p-0">
-        <ScrollArea className="h-[300px] p-4">
+        <ScrollArea className={`${isSheet ? 'h-[calc(100vh-200px)]' : 'h-[300px]'} p-4`}> {/* Adjust height for sheet */}
           {cartItems.map((item, index) => (
             <React.Fragment key={item.cartItemId}>
               <div className="flex items-center justify-between py-3">
                 <CartItemDisplay item={item} />
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 sm:gap-2">
                   <Button
                     variant="outline"
                     size="icon"
-                    className="h-8 w-8"
+                    className="h-7 w-7 sm:h-8 sm:w-8"
                     onClick={() => onUpdateQuantity(item.cartItemId, item.quantity - 1)}
-                    disabled={item.quantity <= 1}
                   >
                     <MinusCircle className="h-4 w-4" />
                   </Button>
-                  <span className="w-6 text-center text-sm">{item.quantity}</span>
+                  <span className="w-5 sm:w-6 text-center text-sm">{item.quantity}</span>
                   <Button
                     variant="outline"
                     size="icon"
-                    className="h-8 w-8"
+                    className="h-7 w-7 sm:h-8 sm:w-8"
                     onClick={() => onUpdateQuantity(item.cartItemId, item.quantity + 1)}
                   >
                     <PlusCircle className="h-4 w-4" />
@@ -98,7 +102,7 @@ export default function OrderCart({ cartItems, onUpdateQuantity, onRemoveItem, o
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8 text-destructive hover:text-destructive"
+                    className="h-7 w-7 sm:h-8 sm:w-8 text-destructive hover:text-destructive"
                     onClick={() => onRemoveItem(item.cartItemId)}
                   >
                     <Trash2 className="h-4 w-4" />
@@ -110,15 +114,18 @@ export default function OrderCart({ cartItems, onUpdateQuantity, onRemoveItem, o
           ))}
         </ScrollArea>
       </CardContent>
-      <CardFooter className="flex flex-col gap-4 p-4 border-t">
-        <div className="flex justify-between w-full text-lg font-semibold">
-          <span>Total:</span>
-          <span>₹{totalAmount.toFixed(2)}</span>
-        </div>
-        <Button onClick={onProceedToCheckout} className="w-full" size="lg">
-          Proceed to Checkout
-        </Button>
-      </CardFooter>
+      {/* Footer is conditional for Sheet mode, handled by Navbar for Sheet */}
+      {!isSheet && (
+        <CardFooter className="flex flex-col gap-4 p-4 border-t">
+            <div className="flex justify-between w-full text-lg font-semibold">
+            <span>Total:</span>
+            <span>₹{totalAmount.toFixed(2)}</span>
+            </div>
+            <Button onClick={onProceedToCheckout} className="w-full" size="lg" disabled={cartItems.length === 0}>
+            Proceed to Checkout
+            </Button>
+        </CardFooter>
+      )}
     </Card>
   );
 }
