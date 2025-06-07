@@ -11,13 +11,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableCaption } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { PlusCircle, MinusCircle, Trash2, UserPlus, ShoppingBag, Coffee, Sparkles, Edit3, DollarSign, RefreshCw, ClipboardList, CheckCircle } from "lucide-react";
-import { COFFEE_FLAVORS, SHAKE_FLAVORS, PRICES, SERVING_TYPES, ALL_MENU_ITEMS } from '@/lib/constants';
-import type { ProductMenuItem, ManualOrderCartItem, CustomizationType, ItemServingType, PendingCashOrderView } from '@/types';
+import { PlusCircle, MinusCircle, Trash2, UserPlus, ShoppingBag, Coffee, Sparkles, Edit3, DollarSign, RefreshCw, ClipboardList, CheckCircle, ImageOff } from "lucide-react";
+import { ALL_MENU_ITEMS } from '@/lib/constants'; // ProductConstantItem
+import type { ProductConstantItem, ManualOrderCartItem, CustomizationType, ItemServingType, PendingCashOrderView } from '@/types';
 import { PaymentMethod } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import { createManualOrderAction, getPendingCashOrdersAction, confirmCashPaymentAction } from './actions';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import Image from 'next/image';
+
 
 const CUSTOMIZATION_OPTIONS: CustomizationType[] = ["normal", "sweet", "bitter"];
 
@@ -32,7 +34,7 @@ export default function AdminManualOrderPage() {
   
   const [isSubmittingManualOrder, setIsSubmittingManualOrder] = useState(false);
   const [isFetchingPendingOrders, setIsFetchingPendingOrders] = useState(false);
-  const [isConfirmingPayment, setIsConfirmingPayment] = useState<string | null>(null); // Stores ID of order being confirmed
+  const [isConfirmingPayment, setIsConfirmingPayment] = useState<string | null>(null); 
 
   const [pendingCashOrders, setPendingCashOrders] = useState<PendingCashOrderView[]>([]);
 
@@ -56,12 +58,8 @@ export default function AdminManualOrderPage() {
     fetchPendingOrders();
   }, []);
 
-  const availableProducts = useMemo<ProductMenuItem[]>(() => {
-    return ALL_MENU_ITEMS.map(item => ({
-      ...item, // id, name, category (enum), imageHint
-      categoryDisplay: item.category, // This was previously mapping from MENU_CATEGORIES_MAP, ensure constants provide user-friendly name or map here
-      prices: PRICES[item.category],
-    }));
+  const availableProducts = useMemo<ProductConstantItem[]>(() => {
+    return ALL_MENU_ITEMS; // Already in ProductConstantItem structure
   }, []);
 
   const filteredProducts = useMemo(() => {
@@ -72,17 +70,15 @@ export default function AdminManualOrderPage() {
     );
   }, [searchTerm, availableProducts]);
 
-  const addToCart = (product: ProductMenuItem, servingType: ItemServingType) => {
+  const addToCart = (product: ProductConstantItem, servingType: ItemServingType) => {
     const price = product.prices[servingType];
-    // Ensure unique cartItemId for items, especially if re-added after removal or for different customizations.
     const cartItemId = `${product.id}-${servingType}-${Date.now()}`; 
 
     setCart(prevCart => {
-        // Check if an item with the same product ID and serving type, and "normal" customization already exists.
         const existingItemIndex = prevCart.findIndex(item => 
             item.productId === product.id && 
             item.servingType === servingType &&
-            item.customization === "normal" // Only auto-increment for default customization
+            item.customization === "normal" 
         );
 
         if (existingItemIndex > -1) {
@@ -93,17 +89,17 @@ export default function AdminManualOrderPage() {
             };
             return updatedCart;
         } else {
-            // Add as a new item if not found or if existing has different customization
             return [...prevCart, {
                 cartItemId,
                 productId: product.id,
                 name: product.name,
-                category: product.category, // Store enum key
+                category: product.category,
                 servingType,
                 price,
                 quantity: 1,
                 customization: "normal",
                 imageHint: product.imageHint,
+                imageUrl: product.imageUrl, // Added imageUrl
             }];
         }
     });
@@ -180,7 +176,6 @@ export default function AdminManualOrderPage() {
         const result = await confirmCashPaymentAction(orderId);
         if (result.success) {
             toast({ title: "Payment Confirmed!", description: `Order ${orderId} marked as paid.` });
-            // Refresh pending orders list
             startTransition(() => {
                  fetchPendingOrders();
             });
@@ -205,7 +200,6 @@ export default function AdminManualOrderPage() {
         </CardHeader>
       </Card>
 
-      {/* Pending Customer Cash Payments Section */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -268,7 +262,6 @@ export default function AdminManualOrderPage() {
 
       <Separator />
 
-      {/* Create New Manual Order Section */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-4">
           <Card>
@@ -282,15 +275,24 @@ export default function AdminManualOrderPage() {
               />
             </CardHeader>
             <CardContent>
-              <ScrollArea className="h-[400px] pr-3">
+              <ScrollArea className="h-[500px] pr-3"> {/* Increased height */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {filteredProducts.map(product => (
-                    <Card key={product.id} className="overflow-hidden hover:shadow-md transition-shadow">
+                    <Card key={product.id} className="overflow-hidden hover:shadow-md transition-shadow flex flex-col">
+                       <div className="relative w-full h-36 bg-muted">
+                          {product.imageUrl ? (
+                            <Image src={product.imageUrl} alt={product.name} layout="fill" objectFit="cover" onError={(e) => e.currentTarget.style.display = 'none'}/>
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+                               <ImageOff size={30} />
+                            </div>
+                          )}
+                       </div>
                       <CardHeader className="p-3">
                          <CardTitle className="text-base font-semibold">{product.name}</CardTitle>
                          <CardDescription className="text-xs">{product.categoryDisplay}</CardDescription>
                       </CardHeader>
-                      <CardContent className="p-3 pt-0 space-y-2">
+                      <CardContent className="p-3 pt-0 space-y-2 flex-grow">
                         {SERVING_TYPES.map(type => (
                            <Button 
                             key={type}
@@ -336,13 +338,13 @@ export default function AdminManualOrderPage() {
                       {cart.map(item => (
                         <TableRow key={item.cartItemId}>
                           <TableCell>
-                            <p className="font-medium">{item.name}</p>
+                            <p className="font-medium text-sm">{item.name}</p>
                             <p className="text-xs text-muted-foreground">{item.servingType} - ₹{item.price}</p>
                           </TableCell>
                           <TableCell>
                              <div className="flex items-center gap-1">
                               <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => updateQuantity(item.cartItemId, item.quantity - 1)}><MinusCircle className="h-3 w-3"/></Button>
-                              <span>{item.quantity}</span>
+                              <span className="text-sm">{item.quantity}</span>
                               <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => updateQuantity(item.cartItemId, item.quantity + 1)}><PlusCircle className="h-3 w-3"/></Button>
                             </div>
                           </TableCell>
@@ -373,29 +375,29 @@ export default function AdminManualOrderPage() {
               <Separator className="my-4"/>
               <div className="space-y-3">
                 <div>
-                  <Label htmlFor="customerName" className="flex items-center mb-1"><UserPlus className="mr-1 h-3 w-3"/>Customer Name</Label>
+                  <Label htmlFor="customerName" className="flex items-center mb-1 text-sm"><UserPlus className="mr-1 h-3 w-3"/>Customer Name</Label>
                   <Input id="customerName" placeholder="Optional" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
                 </div>
                 <div>
-                  <Label htmlFor="customerPhone" className="flex items-center mb-1"><UserPlus className="mr-1 h-3 w-3"/>Customer Phone</Label>
+                  <Label htmlFor="customerPhone" className="flex items-center mb-1 text-sm"><UserPlus className="mr-1 h-3 w-3"/>Customer Phone</Label>
                   <Input id="customerPhone" placeholder="Optional" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
                 </div>
                 <div>
-                  <Label className="mb-1 block flex items-center"><DollarSign className="mr-1 h-3 w-3"/>Payment Method</Label>
+                  <Label className="mb-1 block flex items-center text-sm"><DollarSign className="mr-1 h-3 w-3"/>Payment Method</Label>
                   <RadioGroup value={manualPaymentMethod} onValueChange={(value: string) => setManualPaymentMethod(value as PaymentMethod.Cash | PaymentMethod.UPI)} className="flex gap-4 pt-1">
                     <div className="flex items-center space-x-2">
                       <RadioGroupItem value={PaymentMethod.Cash} id="cash"/>
-                      <Label htmlFor="cash" className="font-normal">Cash</Label>
+                      <Label htmlFor="cash" className="font-normal text-sm">Cash</Label>
                     </div>
                     <div className="flex items-center space-x-2">
                       <RadioGroupItem value={PaymentMethod.UPI} id="upi"/>
-                      <Label htmlFor="upi" className="font-normal">UPI</Label>
+                      <Label htmlFor="upi" className="font-normal text-sm">UPI</Label>
                     </div>
                   </RadioGroup>
                 </div>
               </div>
             </CardContent>
-            <CardFooter className="flex-col space-y-3 items-stretch">
+            <CardFooter className="flex-col space-y-3 items-stretch pt-4">
               <div className="flex justify-between text-lg font-bold">
                 <span>Total:</span>
                 <span>₹{cartTotal.toFixed(2)}</span>

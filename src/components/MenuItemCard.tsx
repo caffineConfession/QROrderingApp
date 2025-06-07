@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
-import { PlusCircle, Coffee as CoffeeIcon, IceCream as IceCreamConeIcon, IceCream2 as IceCreamBowlIcon, Info } from 'lucide-react';
+import { PlusCircle, Coffee as CoffeeIcon, IceCream as IceCreamConeIcon, IceCream2 as IceCreamBowlIcon, Info, ImageOff } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
 import { Badge } from './ui/badge';
 
@@ -18,14 +18,12 @@ interface MenuItemCardProps {
 }
 
 export default function MenuItemCard({ product, onAddToCart }: MenuItemCardProps) {
-  // Find the first available menu item to set as default, or null if none.
   const findDefaultSelectableItem = () => {
     return product.menuItems.find(mi => mi.isAvailable && mi.stockQuantity > 0)?.id || null;
   };
 
   const [selectedMenuItemId, setSelectedMenuItemId] = useState<string | null>(findDefaultSelectableItem());
 
-  // Effect to reset selection if product or its menu items change
   useEffect(() => {
     setSelectedMenuItemId(findDefaultSelectableItem());
   }, [product]);
@@ -41,22 +39,33 @@ export default function MenuItemCard({ product, onAddToCart }: MenuItemCardProps
   const getServingTypeIcon = (servingType: string, productCategory: ItemCategory) => {
     if (servingType === 'Cone') return IceCreamConeIcon;
     if (productCategory === ItemCategory.COFFEE) return CoffeeIcon;
-    return IceCreamBowlIcon; // For Shakes in Cup
+    return IceCreamBowlIcon; 
   };
+
+  const [imageError, setImageError] = useState(false);
 
   return (
     <Card className="w-full max-w-sm shadow-lg hover:shadow-xl transition-shadow duration-300 rounded-xl overflow-hidden flex flex-col">
       <CardHeader className="p-0">
-        <div className="relative w-full h-48">
-          <Image
-            src={`https://placehold.co/300x200.png`}
-            alt={product.name}
-            layout="fill"
-            objectFit="cover"
-            data-ai-hint={product.imageHint || product.name.toLowerCase()}
-          />
+        <div className="relative w-full h-48 bg-muted">
+          {imageError || !product.imageUrl ? (
+             <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground">
+                <ImageOff size={48} />
+                <span className="mt-2 text-xs">No image</span>
+             </div>
+          ) : (
+            <Image
+              src={product.imageUrl}
+              alt={product.name}
+              fill
+              style={{ objectFit: "cover" }}
+              onError={() => setImageError(true)}
+              priority={product.category === ItemCategory.COFFEE} // Example: Prioritize coffee images
+              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+            />
+          )}
            {!product.isAvailable && (
-            <Badge variant="destructive" className="absolute top-2 right-2">Unavailable</Badge>
+            <Badge variant="destructive" className="absolute top-2 right-2 z-10">Unavailable</Badge>
           )}
         </div>
         <div className="p-4">
