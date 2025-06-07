@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { PlusCircle, MinusCircle, Trash2, ShoppingCart, ImageOff } from 'lucide-react';
+import { PlusCircle, MinusCircle, Trash2, ShoppingCart, ImageOff, AlertTriangle } from 'lucide-react';
 import Image from 'next/image';
 
 interface OrderCartProps {
@@ -123,6 +123,10 @@ export default function OrderCart({ cartItems, onUpdateQuantity, onRemoveItem, o
             <Button onClick={onProceedToCheckout} className="w-full" size="lg" disabled={cartItems.length === 0}>
             Proceed to Checkout
             </Button>
+            <p className="text-xs text-muted-foreground text-center mt-2 flex items-center justify-center">
+                <AlertTriangle className="h-3 w-3 mr-1 flex-shrink-0" />
+                Product images are for illustration purposes only. Actual product size and looks may vary.
+            </p>
         </CardFooter>
       )}
     </Card>
