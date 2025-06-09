@@ -81,7 +81,7 @@ export default function MenuItemCard({ product, onAddToCart }: MenuItemCardProps
               src={product.imageUrl}
               alt={product.name}
               fill
-              style={{ objectFit: "cover" }}
+              style={{ objectFit: "contain" }} // Changed from "cover" to "contain"
               onError={() => {
                 // console.warn(`[MenuItemCard] Image failed to load for ${product.name}: ${product.imageUrl}`);
                 setImageError(true);
