@@ -18,21 +18,30 @@ interface MenuItemCardProps {
 }
 
 export default function MenuItemCard({ product, onAddToCart }: MenuItemCardProps) {
+  // console.log("[MenuItemCard] Received product:", product.name, product);
+
   const findDefaultSelectableItem = () => {
-    return product.menuItems.find(mi => mi.isAvailable && mi.stockQuantity > 0)?.id || null;
+    const firstAvailable = product.menuItems.find(mi => mi.isAvailable && mi.stockQuantity > 0)?.id || null;
+    // console.log(`[MenuItemCard] Product: ${product.name}, MenuItems:`, product.menuItems, `Default selectable: ${firstAvailable}`);
+    return firstAvailable;
   };
 
   const [selectedMenuItemId, setSelectedMenuItemId] = useState<string | null>(findDefaultSelectableItem());
 
   useEffect(() => {
+    // This effect ensures that if product data changes (e.g., fetched again),
+    // the selectedMenuItemId is re-evaluated.
     setSelectedMenuItemId(findDefaultSelectableItem());
-  }, [product]);
+  }, [product.id, product.menuItems]); // Depend on product.id and menuItems array
 
   const selectedMenuItem = product.menuItems.find(mi => mi.id === selectedMenuItemId);
 
   const handleAddToCart = () => {
     if (selectedMenuItem && selectedMenuItem.isAvailable && selectedMenuItem.stockQuantity > 0) {
+      // console.log(`[MenuItemCard] Adding to cart: ${product.name} - ${selectedMenuItem.servingType}`);
       onAddToCart(product, selectedMenuItem);
+    } else {
+      // console.warn(`[MenuItemCard] Add to cart condition not met for ${product.name}`, {selectedMenuItem, productIsAvailable: product.isAvailable});
     }
   };
 
@@ -43,6 +52,20 @@ export default function MenuItemCard({ product, onAddToCart }: MenuItemCardProps
   };
 
   const [imageError, setImageError] = useState(false);
+  useEffect(() => {
+    setImageError(false); // Reset image error state if product.imageUrl changes
+  }, [product.imageUrl]);
+
+
+  if (!product || !product.menuItems) {
+    console.error("[MenuItemCard] Product or product.menuItems is undefined for product ID:", product?.id);
+    return (
+      <Card className="w-full max-w-sm shadow-lg rounded-xl overflow-hidden flex flex-col">
+        <CardHeader><CardTitle>Error</CardTitle></CardHeader>
+        <CardContent><p>Product data is unavailable.</p></CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card className="w-full max-w-sm shadow-lg hover:shadow-xl transition-shadow duration-300 rounded-xl overflow-hidden flex flex-col">
@@ -59,7 +82,10 @@ export default function MenuItemCard({ product, onAddToCart }: MenuItemCardProps
               alt={product.name}
               fill
               style={{ objectFit: "cover" }}
-              onError={() => setImageError(true)}
+              onError={() => {
+                // console.warn(`[MenuItemCard] Image failed to load for ${product.name}: ${product.imageUrl}`);
+                setImageError(true);
+              }}
               priority={product.category === ItemCategory.COFFEE} // Example: Prioritize coffee images
               sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
             />

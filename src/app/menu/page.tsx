@@ -47,18 +47,24 @@ export default function MenuPage() {
 
   useEffect(() => {
     const fetchMenu = async () => {
+      console.log("[MenuPage] Fetching menu data...");
       setIsLoadingMenu(true);
       setMenuError(null);
       try {
         const result = await getDisplayMenuAction();
+        console.log("[MenuPage] Menu data received from action:", result);
         if (result.success && result.products) {
           setProducts(result.products);
+          if (result.products.length === 0) {
+            console.warn("[MenuPage] No products returned from the backend.");
+          }
         } else {
           setMenuError(result.error || "Failed to load menu items.");
+          console.error("[MenuPage] Error fetching menu items:", result.error);
           setProducts([]);
         }
       } catch (error) {
-        console.error("Error fetching menu:", error);
+        console.error("[MenuPage] Exception while fetching menu:", error);
         setMenuError("An unexpected error occurred while fetching the menu.");
         setProducts([]);
       } finally {
@@ -168,6 +174,7 @@ export default function MenuPage() {
   const shakeItems = useMemo(() => products.filter(item => item.category === ItemCategory.SHAKES), [products]);
 
   const renderMenuSection = (titleIcon: React.ReactNode, title: string, items: ProductWithMenuDetails[]) => {
+    console.log(`[MenuPage] Rendering section "${title}" with ${items.length} items.`);
     if (isLoadingMenu) {
       return (
         <div>
@@ -188,6 +195,7 @@ export default function MenuPage() {
       );
     }
     if (items.length === 0 && !menuError) {
+        console.log(`[MenuPage] No items to display for section "${title}".`);
         return (
              <div>
                 <h2 className="text-3xl font-bold mb-6 text-primary border-b-2 border-primary pb-2 flex items-center">
