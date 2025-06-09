@@ -184,7 +184,8 @@ export interface ProductComment extends ExperienceComment {
 
 // Old ProductMenuItem definition structure from constants.ts for reference.
 // The app primarily uses ProductWithMenuDetails fetched from DB.
-export interface ProductConstantItem { 
+export interface ProductConstantItem {
+  [x: string]: string; 
   id: string; 
   name: string;
   category: ItemCategory; 

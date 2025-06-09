@@ -78,8 +78,9 @@ export async function createAdminUserAction(data: CreateAdminUserFormData) {
     }
 
     const { email, password, role } = validation.data;
+    const lowercasedEmail = email.toLowerCase();
 
-    const existingUser = await prisma.adminUser.findUnique({ where: { email } });
+    const existingUser = await prisma.adminUser.findUnique({ where: { email: lowercasedEmail } });
     if (existingUser) {
       return { success: false, error: 'An account with this email already exists.' };
     }
@@ -88,7 +89,7 @@ export async function createAdminUserAction(data: CreateAdminUserFormData) {
 
     const newUser = await prisma.adminUser.create({
       data: {
-        email: email.toLowerCase(),
+        email: lowercasedEmail,
         passwordHash: hashedPassword,
         role,
       },
@@ -111,6 +112,7 @@ export async function updateAdminUserAction(userId: string, data: UpdateAdminUse
     }
 
     const { email, role } = validation.data;
+    const lowercasedEmail = email.toLowerCase();
 
     const userToUpdate = await prisma.adminUser.findUnique({ where: { id: userId } });
     if (!userToUpdate) {
@@ -118,9 +120,9 @@ export async function updateAdminUserAction(userId: string, data: UpdateAdminUse
     }
 
     // Check if email is being changed and if the new email already exists for another user
-    if (email.toLowerCase() !== userToUpdate.email.toLowerCase()) {
+    if (lowercasedEmail !== userToUpdate.email.toLowerCase()) {
       const existingUserWithNewEmail = await prisma.adminUser.findUnique({
-        where: { email: email.toLowerCase() },
+        where: { email: lowercasedEmail },
       });
       if (existingUserWithNewEmail && existingUserWithNewEmail.id !== userId) {
         return { success: false, error: 'This email address is already in use by another account.' };
@@ -130,7 +132,7 @@ export async function updateAdminUserAction(userId: string, data: UpdateAdminUse
     const updatedUser = await prisma.adminUser.update({
       where: { id: userId },
       data: {
-        email: email.toLowerCase(),
+        email: lowercasedEmail,
         role,
       },
     });
@@ -154,7 +156,7 @@ export async function deleteAdminUserAction(userId: string) {
     }
 
     // Prevent Business Manager from deleting their own account
-    if (userToDelete.email === session.email) {
+    if (userToDelete.email === session.email?.toLowerCase()) { // Ensure session email is also compared in lowercase
         return { success: false, error: "You cannot delete your own account." };
     }
 

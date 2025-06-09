@@ -117,10 +117,7 @@ function AnalyticsSkeleton() {
 
 
 export default function AdminAnalyticsPage() {
-  const [dateRange, setDateRange] = React.useState<DateRange | undefined>({
-    from: subDays(new Date(), 29),
-    to: new Date(),
-  });
+  const [dateRange, setDateRange] = React.useState<DateRange | undefined>(undefined); // Initialize as undefined
   const [analyticsData, setAnalyticsData] = useState<AnalyticsPageData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -131,7 +128,7 @@ export default function AdminAnalyticsPage() {
     try {
       const rangeToFetch = currentDateRange?.from && currentDateRange?.to
         ? { from: format(currentDateRange.from, 'yyyy-MM-dd'), to: format(currentDateRange.to, 'yyyy-MM-dd') }
-        : undefined;
+        : undefined; // If no range, action fetches default (e.g., this year or overall)
       
       const result = await getAnalyticsPageData(rangeToFetch);
       if (result.success && result.data) {
@@ -150,31 +147,51 @@ export default function AdminAnalyticsPage() {
   };
 
   useEffect(() => {
-    fetchData(dateRange);
-  }, []); // Fetch on initial load with default date range
+    // This effect sets the initial date range client-side and triggers the first fetch.
+    // This ensures new Date() is called on the client.
+    const today = new Date();
+    const fromDate = subDays(today, 29);
+    const initialRange = { from: fromDate, to: today };
+    
+    setDateRange(initialRange);
+    fetchData(initialRange); // Fetch data with this client-determined initial range
+  }, []); // Empty dependency array ensures this runs once on mount
 
   const handleFilterApply = () => {
-    fetchData(dateRange);
+    if (dateRange?.from && dateRange?.to) {
+        fetchData(dateRange);
+    } else {
+        // Fallback or error if dateRange is not properly set by the picker
+        // For now, if somehow null, let fetchData use its default logic
+        fetchData(undefined);
+        toast({
+            title: "Date range not set",
+            description: "Please select a valid date range or showing default.",
+            variant: "default"
+        });
+    }
   };
   
   const formattedChartData = analyticsData?.dailySalesChartData.map(item => ({
     ...item,
-    // Ensure date is parsed correctly if it's a string, then formatted
-    date: format(parseISO(item.date), 'MMM d'), 
+    date: analyticsData?.filterRange ? format(parseISO(item.date), 'MMM d') : format(parseISO(item.date), 'MMM d, yy'), 
   })) || [];
 
   const selectedPeriodText = () => {
+    // Use analyticsData.filterRange if available (meaning data is for a specific filtered range)
     if (analyticsData?.filterRange?.from && analyticsData?.filterRange?.to) {
       return `${format(parseISO(analyticsData.filterRange.from), "MMM d, yyyy")} - ${format(parseISO(analyticsData.filterRange.to), "MMM d, yyyy")}`;
     }
+    // Fallback to UI selected dateRange if analyticsData.filterRange is not yet populated (e.g. initial load before data response)
     if (dateRange?.from && dateRange?.to) {
        return `${format(dateRange.from, "MMM d, yyyy")} - ${format(dateRange.to, "MMM d, yyyy")}`;
     }
-    return "Overall";
+    // Default text if no range is determined yet
+    return "Loading range...";
   };
 
 
-  if (isLoading && !analyticsData) { // Show skeleton only on initial load
+  if (isLoading && !analyticsData) { 
     return <AnalyticsSkeleton />;
   }
 
@@ -200,10 +217,10 @@ export default function AdminAnalyticsPage() {
   }
   
   if (!analyticsData) {
-    return ( // Should not happen if error is also null, but as a fallback
+    return ( 
          <div className="space-y-6">
             <Card><CardHeader><CardTitle>Analytics</CardTitle></CardHeader>
-            <CardContent><p>No analytics data available.</p></CardContent></Card>
+            <CardContent><p>No analytics data available. Please try applying a filter.</p></CardContent></Card>
         </div>
     );
   }
@@ -213,7 +230,6 @@ export default function AdminAnalyticsPage() {
     selectedOrders,
     averageOrderValue,
     mostPopularItems,
-    // dailySalesChartData, // use formattedChartData
     averageExperienceRating,
     recentExperienceComments,
     recentProductComments,
@@ -242,6 +258,7 @@ export default function AdminAnalyticsPage() {
                       "w-[260px] justify-start text-left font-normal",
                       !dateRange && "text-muted-foreground"
                     )}
+                    disabled={!dateRange} // Disable if dateRange is not yet initialized
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
                     {dateRange?.from ? (
@@ -269,7 +286,7 @@ export default function AdminAnalyticsPage() {
                   />
                 </PopoverContent>
               </Popover>
-              <Button onClick={handleFilterApply} disabled={isLoading}>
+              <Button onClick={handleFilterApply} disabled={isLoading || !dateRange}>
                 <Filter className="mr-2 h-4 w-4" /> {isLoading ? "Loading..." : "Apply Filters"}
               </Button>
             </div>
@@ -321,7 +338,7 @@ export default function AdminAnalyticsPage() {
         <Card className="lg:col-span-3">
           <CardHeader>
             <CardTitle>Sales Trend</CardTitle>
-            <CardDescription>Revenue from completed orders per day for the selected period.</CardDescription>
+            <CardDescription>Revenue from completed orders per day for the displayed period.</CardDescription>
           </CardHeader>
           <CardContent className="h-[350px] w-full p-2">
              {formattedChartData.length > 0 ? (
@@ -368,7 +385,7 @@ export default function AdminAnalyticsPage() {
             <CardTitle className="flex items-center">
                 <Package className="mr-2 h-5 w-5 text-primary" /> Most Popular Items
             </CardTitle>
-            <CardDescription>Top 5 items by quantity sold for the selected period.</CardDescription>
+            <CardDescription>Top 5 items by quantity sold for the displayed period.</CardDescription>
           </CardHeader>
           <CardContent>
             {mostPopularItems.length > 0 ? (
@@ -419,7 +436,7 @@ export default function AdminAnalyticsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center"><MessageSquare className="mr-2 h-5 w-5 text-primary"/>Recent Overall Feedback</CardTitle>
-            <CardDescription>Latest comments on overall experience for the selected period.</CardDescription>
+            <CardDescription>Latest comments on overall experience for the displayed period.</CardDescription>
           </CardHeader>
           <CardContent>
             {recentExperienceComments.length > 0 ? (
@@ -438,7 +455,7 @@ export default function AdminAnalyticsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center"><MessageSquare className="mr-2 h-5 w-5 text-primary"/>Recent Product Feedback</CardTitle>
-            <CardDescription>Latest comments on specific products for the selected period.</CardDescription>
+            <CardDescription>Latest comments on specific products for the displayed period.</CardDescription>
           </CardHeader>
           <CardContent>
             {recentProductComments.length > 0 ? (
@@ -458,6 +475,5 @@ export default function AdminAnalyticsPage() {
     </div>
   );
 }
-
 
     

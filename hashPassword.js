@@ -1,3 +1,4 @@
+
 // hashPassword.js
 // ────────────────────────────────────────────────────────────────────
 // Prints each admin’s email, role, and a bcrypt-hashed version of the
@@ -21,8 +22,9 @@ async function generateHashedAdminCredentials(users) {
   for (const user of users) {
     try {
       const hashedPassword = await bcrypt.hash(user.password, saltRounds);
+      const lowerCaseEmail = user.email.toLowerCase();
 
-      console.log(`Email   : ${user.email}`);
+      console.log(`Email   : ${lowerCaseEmail}`);
       console.log(`Role    : ${user.role}`);
       console.log(`Password: ${hashedPassword}`);
       console.log('───────────────────────────────────────────────');
@@ -33,3 +35,4 @@ async function generateHashedAdminCredentials(users) {
 }
 
 generateHashedAdminCredentials(adminUsers);
+
