@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { KeyRound, Mail, ShieldAlert, LockKeyhole } from "lucide-react";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+// useRouter is removed as we'll use window.location
 import { loginAction, resetPasswordAction } from "./actions";
 import { useToast } from "@/hooks/use-toast";
 
@@ -31,7 +31,6 @@ export type ResetPasswordFormData = z.infer<typeof ResetPasswordSchema>;
 
 
 export default function AdminLoginPage() {
-  const router = useRouter();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [showResetForm, setShowResetForm] = useState(false);
@@ -63,14 +62,15 @@ export default function AdminLoginPage() {
           description: `Welcome! Redirecting to dashboard...`,
           variant: "default",
         });
-        router.push("/admin/dashboard");
-        // router.refresh(); // Removed this line
+        // Use window.location.assign for a full page redirect
+        window.location.assign("/admin/dashboard");
       } else {
         toast({
           title: "Login Failed",
           description: result.error || "Invalid credentials. Please try again.",
           variant: "destructive",
         });
+        setIsLoading(false); // Only set isLoading to false if login failed, to allow redirect to complete
       }
     } catch (error) {
       toast({
@@ -79,9 +79,9 @@ export default function AdminLoginPage() {
         variant: "destructive",
       });
       console.error("Login error:", error);
-    } finally {
       setIsLoading(false);
     }
+    // Do not set isLoading to false here if successful, as the page will redirect
   };
 
   const onResetPasswordSubmit: SubmitHandler<ResetPasswordFormData> = async (data) => {
