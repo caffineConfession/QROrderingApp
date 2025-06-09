@@ -1,7 +1,8 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Home, ShoppingBag, BarChart3, Users as UsersIcon, Coffee, Package, Settings } from "lucide-react";
+// Icons used directly in this layout, not passed as props to NavLink
+import { Coffee } from "lucide-react"; 
 import { Button } from "@/components/ui/button";
 import { cookies } from "next/headers"; 
 import { decryptSession } from "@/lib/session";
@@ -17,7 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import LogoutButton from "./LogoutButton";
-import NavLink from "./NavLink"; // Import the new NavLink component
+import NavLink from "./NavLink"; // NavLink is now a client component handling its own path
 
 export const metadata: Metadata = {
   title: "Caffico Admin",
@@ -54,12 +55,12 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
           </div>
           <div className="flex-1">
             <nav className="grid items-start px-2 text-sm font-medium lg:px-4">
-              <NavLink href="/admin/dashboard" icon={Home} label="Dashboard" sessionRole={session.role}/>
-              <NavLink href="/admin/orders" icon={ShoppingBag} label="Orders" roles={[ADMIN_ROLES.ORDER_PROCESSOR, ADMIN_ROLES.BUSINESS_MANAGER]} sessionRole={session.role}/>
-              <NavLink href="/admin/manual-order" icon={UsersIcon} label="Manual Order" roles={[ADMIN_ROLES.MANUAL_ORDER_TAKER, ADMIN_ROLES.BUSINESS_MANAGER]} sessionRole={session.role}/>
-              <NavLink href="/admin/products" icon={Package} label="Menu Management" roles={[ADMIN_ROLES.BUSINESS_MANAGER]} sessionRole={session.role}/>
-              <NavLink href="/admin/analytics" icon={BarChart3} label="Analytics" roles={[ADMIN_ROLES.BUSINESS_MANAGER]} sessionRole={session.role}/>
-              <NavLink href="/admin/users" icon={Settings} label="User Management" roles={[ADMIN_ROLES.BUSINESS_MANAGER]} sessionRole={session.role}/>
+              <NavLink href="/admin/dashboard" iconName="Home" label="Dashboard" sessionRole={session.role}/>
+              <NavLink href="/admin/orders" iconName="ShoppingBag" label="Orders" roles={[ADMIN_ROLES.ORDER_PROCESSOR, ADMIN_ROLES.BUSINESS_MANAGER]} sessionRole={session.role}/>
+              <NavLink href="/admin/manual-order" iconName="Users" label="Manual Order" roles={[ADMIN_ROLES.MANUAL_ORDER_TAKER, ADMIN_ROLES.BUSINESS_MANAGER]} sessionRole={session.role}/>
+              <NavLink href="/admin/products" iconName="Package" label="Menu Management" roles={[ADMIN_ROLES.BUSINESS_MANAGER]} sessionRole={session.role}/>
+              <NavLink href="/admin/analytics" iconName="BarChart3" label="Analytics" roles={[ADMIN_ROLES.BUSINESS_MANAGER]} sessionRole={session.role}/>
+              <NavLink href="/admin/users" iconName="Settings" label="User Management" roles={[ADMIN_ROLES.BUSINESS_MANAGER]} sessionRole={session.role}/>
             </nav>
           </div>
           <div className="mt-auto p-4 border-t">
@@ -90,7 +91,7 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>My Account ({session.role.replace(/_/g, ' ')})</DropdownMenuLabel>
-              {session.email && <DropdownMenuLabel className="font-normal text-xs text-muted-foreground -mt-2">{session.email}</DropdownMenuLabel> }
+              {session.email && <DropdownMenuLabel className="font-normal text-xs text-muted-foreground -mt-2">{session.email}</DropdownMenuLabel>}
               <DropdownMenuSeparator />
               <LogoutButton />
             </DropdownMenuContent>

@@ -1,4 +1,3 @@
-
 import { PrismaClient, AdminRole, ItemCategory, ItemServingType, OrderStatus, PaymentStatus, OrderSource, PaymentMethod } from '@prisma/client';
 import bcryptjs from 'bcryptjs';
 import { ALL_MENU_ITEMS } from '../src/lib/constants'; // Path relative to the prisma directory
@@ -35,25 +34,32 @@ async function main() {
     { email: 'processor@caffico.com', role: AdminRole.ORDER_PROCESSOR, password: 'processorPass123' },
   ];
 
+  const createdAdminUsers = [];
   for (const userData of adminUsersData) {
     const hashedPassword = await bcryptjs.hash(userData.password, SALT_ROUNDS);
-    await prisma.adminUser.create({
+    const adminUser = await prisma.adminUser.create({
       data: {
         email: userData.email.toLowerCase(),
         passwordHash: hashedPassword,
         role: userData.role,
       },
     });
+    createdAdminUsers.push(adminUser);
     console.log(`   ✓ Created admin user: ${userData.email}`);
   }
+  const adminUserCount = await prisma.adminUser.count();
+  console.log(`📊 Total admin users in database: ${adminUserCount}`);
+
   console.log('✅ Admin users creation complete.');
+
+  console.log('⏳ Adding a short delay to ensure database sync...');
+  await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay
 
   // 3. Create Products and MenuItems
   console.log('☕ Creating products and menu items from constants...');
   const createdProductsDb = []; // To store products created in DB for later use in sample orders
 
   for (const productData of ALL_MENU_ITEMS) {
-    // Ensure product description is not null if your schema requires it
     const description = productData.description || `${productData.name} - a delicious treat from Caffico.`;
     
     const product = await prisma.product.create({
@@ -61,8 +67,8 @@ async function main() {
         id: productData.id, // Using predefined ID from constants
         name: productData.name,
         description: description,
-        category: productData.category, // This is ItemCategory from @/types which should match Prisma's enum
-        isAvailable: true, // Default to available
+        category: productData.category,
+        isAvailable: true,
         imageUrl: productData.imageUrl,
         imageHint: productData.imageHint,
       },
@@ -71,11 +77,9 @@ async function main() {
     console.log(`   ✓ Created product: ${product.name} (ID: ${product.id})`);
 
     // Create MenuItems for this product
-    // The prices are structured as Record<ItemServingType, number> in constants
     for (const [servingTypeStr, price] of Object.entries(productData.prices)) {
-      const servingType = servingTypeStr as ItemServingType; // Cast string key to Prisma's ItemServingType enum
+      const servingType = servingTypeStr as ItemServingType;
       
-      // Validate if servingType is a valid enum member (optional robustness)
       if (!Object.values(ItemServingType).includes(servingType)) {
         console.warn(`   ⚠️ Invalid serving type "${servingTypeStr}" for product ${product.name}. Skipping menu item.`);
         continue;
@@ -86,8 +90,8 @@ async function main() {
           productId: product.id,
           servingType: servingType,
           price: price,
-          stockQuantity: 50, // Default stock quantity
-          isAvailable: true,  // Default to available
+          stockQuantity: 50,
+          isAvailable: true,
         },
       });
       console.log(`     ✓ Created menu item: ${product.name} - ${servingType} @ ₹${price}`);
@@ -97,9 +101,10 @@ async function main() {
 
   // 4. Create Sample Orders (if products were created)
   console.log('🛒 Creating sample orders...');
-  if (createdProductsDb.length >= 2) {
+  if (createdProductsDb.length >= 2 && createdAdminUsers.length > 0) {
     const product1 = createdProductsDb[0];
     const product2 = createdProductsDb[1];
+    const managerUser = createdAdminUsers.find(u => u.role === AdminRole.BUSINESS_MANAGER);
 
     const product1MenuItems = await prisma.menuItem.findMany({ where: { productId: product1.id } });
     const product2MenuItems = await prisma.menuItem.findMany({ where: { productId: product2.id } });
@@ -116,12 +121,20 @@ async function main() {
           paymentStatus: PaymentStatus.PAID,
           status: OrderStatus.COMPLETED,
           orderSource: OrderSource.CUSTOMER_ONLINE,
-          gatewayPaymentId: `pay_${Date.now().toString(36)}`, // Mock Razorpay ID
+          gatewayPaymentId: `pay_${Date.now().toString(36)}`,
           items: {
             create: [
               {
-                productId: product1.id,
                 productName: product1.name,
+                product: { connect: { id: product1.id } },
+                menuItem: {
+                  connect: {
+                    productId_servingType: { 
+                      productId: product1.id, 
+                      servingType: product1MenuItems[0].servingType 
+                    }
+                  }
+                },
                 category: product1.category,
                 servingType: product1MenuItems[0].servingType,
                 quantity: 1,
@@ -143,6 +156,7 @@ async function main() {
         }
       });
       console.log(`     ✓ Added experience rating for order ${sampleOrder1.id}`);
+      
       await prisma.productRating.create({
         data: {
           orderId: sampleOrder1.id,
@@ -155,55 +169,72 @@ async function main() {
       console.log(`     ✓ Added product rating for ${product1.name} in order ${sampleOrder1.id}`);
 
       // Sample Order 2: Manual Staff Order
-      const managerUser = await prisma.adminUser.findUnique({where: {email: 'manager@caffico.com'}});
-      if (managerUser && product2MenuItems.length > 0 && product1MenuItems.length > (product1MenuItems[0].servingType === ItemServingType.Cup ? 0:1) ) {
-          const item1Menu = product2MenuItems[0];
-          const item2Menu = product1MenuItems.length > 1 && product1MenuItems[0].servingType !== product1MenuItems[1].servingType ? product1MenuItems[1] : product1MenuItems[0];
+      if (managerUser) {
+        const item1Menu = product2MenuItems[0];
+        const item2Menu = product1MenuItems.length > 1 && 
+                         product1MenuItems[0].servingType !== product1MenuItems[1].servingType ? 
+                         product1MenuItems[1] : product1MenuItems[0];
 
-          const sampleOrder2 = await prisma.order.create({
-            data: {
-              customerName: 'Rohan Verma',
-              customerPhone: '9988770002',
-              customerEmail: 'rohan.verma@example.com',
-              totalAmount: (item1Menu.price * 1) + (item2Menu.price * 2),
-              paymentMethod: PaymentMethod.Cash,
-              paymentStatus: PaymentStatus.PAID,
-              status: OrderStatus.PENDING_PREPARATION,
-              orderSource: OrderSource.STAFF_MANUAL,
-              takenById: managerUser.id, // Associated with the manager
-              items: {
-                create: [
-                  {
-                    productId: product2.id,
-                    productName: product2.name,
-                    category: product2.category,
-                    servingType: item1Menu.servingType,
-                    quantity: 1,
-                    priceAtPurchase: item1Menu.price,
-                    customization: 'sweet',
+        const sampleOrder2 = await prisma.order.create({
+          data: {
+            customerName: 'Rohan Verma',
+            customerPhone: '9988770002',
+            customerEmail: 'rohan.verma@example.com',
+            totalAmount: (item1Menu.price * 1) + (item2Menu.price * 2),
+            paymentMethod: PaymentMethod.Cash,
+            paymentStatus: PaymentStatus.PAID,
+            status: OrderStatus.PENDING_PREPARATION,
+            orderSource: OrderSource.STAFF_MANUAL,
+            takenById: managerUser.id,
+            items: {
+              create: [
+                {
+                  productName: product2.name,
+                  product: { connect: { id: product2.id } },
+                  menuItem: {
+                    connect: {
+                      productId_servingType: { 
+                        productId: product2.id, 
+                        servingType: item1Menu.servingType 
+                      }
+                    }
                   },
-                   {
-                    productId: product1.id,
-                    productName: product1.name,
-                    category: product1.category,
-                    servingType: item2Menu.servingType,
-                    quantity: 2,
-                    priceAtPurchase: item2Menu.price,
-                    customization: 'normal',
+                  category: product2.category,
+                  servingType: item1Menu.servingType,
+                  quantity: 1,
+                  priceAtPurchase: item1Menu.price,
+                  customization: 'sweet',
+                },
+                {
+                  productName: product1.name,
+                  product: { connect: { id: product1.id } },
+                  menuItem: {
+                    connect: {
+                      productId_servingType: { 
+                        productId: product1.id, 
+                        servingType: item2Menu.servingType 
+                      }
+                    }
                   },
-                ],
-              },
+                  category: product1.category,
+                  servingType: item2Menu.servingType,
+                  quantity: 2,
+                  priceAtPurchase: item2Menu.price,
+                  customization: 'normal',
+                },
+              ],
             },
-          });
-          console.log(`   ✓ Created sample order ID: ${sampleOrder2.id} for ${sampleOrder2.customerName} (manual)`);
+          },
+        });
+        console.log(`   ✓ Created sample order ID: ${sampleOrder2.id} for ${sampleOrder2.customerName} (manual)`);
       } else {
-          console.log('   ⚠️ Could not create second sample order due to missing manager or menu items.');
+        console.warn('   ⚠️ Manager user not found. Skipping creation of second sample order.');
       }
     } else {
       console.warn('   ⚠️ Not enough menu items found for sample products. Skipping sample order creation.');
     }
   } else {
-    console.warn('   ⚠️ Not enough products created. Skipping sample order creation.');
+    console.warn('   ⚠️ Not enough products or admin users created. Skipping sample order creation.');
   }
   console.log('✅ Sample orders and ratings creation attempt complete.');
 

@@ -4,20 +4,35 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import type { AdminRole } from "@/types"; // Ensure this path is correct
+import type { AdminRole } from "@/types";
+import { Home, ShoppingBag, Users, Package, Settings, BarChart3 } from 'lucide-react';
+import type { LucideProps } from "lucide-react";
+import type { ForwardRefExoticComponent, RefAttributes } from "react";
+
+// Define the map for icon strings to components
+const iconMap: Record<string, ForwardRefExoticComponent<Omit<LucideProps, "ref"> & RefAttributes<SVGSVGElement>>> = {
+  Home,
+  ShoppingBag,
+  Users, // For Manual Order
+  Package,
+  BarChart3,
+  Settings, // For User Management
+};
+
+export type IconName = keyof typeof iconMap;
 
 interface NavLinkProps {
   href: string;
-  icon: React.ElementType;
+  iconName: IconName; // Changed from icon: React.ElementType
   label: string;
   roles?: AdminRole[];
-  sessionRole?: AdminRole | null; // sessionRole comes from AdminLayout (server component)
+  sessionRole?: AdminRole | null;
 }
 
-const NavLink: React.FC<NavLinkProps> = ({ href, icon: Icon, label, roles, sessionRole }) => {
-  const currentPath = usePathname(); // Client-side hook to get current path
+const NavLink: React.FC<NavLinkProps> = ({ href, iconName, label, roles, sessionRole }) => {
+  const currentPath = usePathname(); 
+  const IconComponent = iconMap[iconName];
 
-  // Role-based visibility check (can remain, as sessionRole is passed down)
   if (roles && sessionRole && !roles.includes(sessionRole)) {
     return null;
   }
@@ -34,7 +49,7 @@ const NavLink: React.FC<NavLinkProps> = ({ href, icon: Icon, label, roles, sessi
         isActive && "bg-muted text-primary"
       )}
     >
-      <Icon className="h-4 w-4" />
+      {IconComponent && <IconComponent className="h-4 w-4" />}
       {label}
     </Link>
   );
