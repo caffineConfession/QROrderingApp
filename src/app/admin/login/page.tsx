@@ -64,7 +64,7 @@ export default function AdminLoginPage() {
           variant: "default",
         });
         router.push("/admin/dashboard");
-        router.refresh(); 
+        // router.refresh(); // Removed this line
       } else {
         toast({
           title: "Login Failed",
