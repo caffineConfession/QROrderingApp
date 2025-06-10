@@ -62,15 +62,17 @@ export default function AdminLoginPage() {
           description: `Welcome! Redirecting to dashboard...`,
           variant: "default",
         });
-        // Use window.location.assign for a full page redirect
-        window.location.assign("/admin/dashboard");
+        // Add a small delay before redirecting
+        setTimeout(() => {
+          window.location.assign("/admin/dashboard");
+        }, 100); // 100ms delay
       } else {
         toast({
           title: "Login Failed",
           description: result.error || "Invalid credentials. Please try again.",
           variant: "destructive",
         });
-        setIsLoading(false); // Only set isLoading to false if login failed, to allow redirect to complete
+        setIsLoading(false); 
       }
     } catch (error) {
       toast({
@@ -81,7 +83,6 @@ export default function AdminLoginPage() {
       console.error("Login error:", error);
       setIsLoading(false);
     }
-    // Do not set isLoading to false here if successful, as the page will redirect
   };
 
   const onResetPasswordSubmit: SubmitHandler<ResetPasswordFormData> = async (data) => {
