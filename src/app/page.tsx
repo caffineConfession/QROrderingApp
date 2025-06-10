@@ -25,7 +25,7 @@ export default function AboutUsPage() {
                 fill
                 style={{ objectFit: "cover" }}
                 data-ai-hint="cafe interior"
-                sizes="100vw"
+                sizes="(max-width: 767px) 100vw, 50vw"
                 priority
               />
             </div>
@@ -117,3 +117,4 @@ export default function AboutUsPage() {
     </div>
   );
 }
+

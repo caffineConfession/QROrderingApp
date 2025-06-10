@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import { Coffee, ShoppingCart, UserCircle, Menu as MenuIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetFooter } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetFooter, SheetDescription } from '@/components/ui/sheet';
 import OrderCart from '@/components/OrderCart'; // Re-use OrderCart for the sheet content
 import { useCart } from '@/contexts/CartContext';
 import { Separator } from './ui/separator';
@@ -50,6 +50,7 @@ export default function Navbar() {
             <SheetContent className="w-full sm:max-w-md flex flex-col">
               <SheetHeader>
                 <SheetTitle className="text-2xl">Your Cart</SheetTitle>
+                <SheetDescription className="sr-only">A summary of items currently in your shopping cart.</SheetDescription>
               </SheetHeader>
               <Separator />
               <div className="flex-grow overflow-y-auto">
@@ -98,6 +99,7 @@ export default function Navbar() {
                 <SheetTitle className="flex items-center gap-2 text-xl">
                   <Coffee className="h-7 w-7 text-primary" /> Caffico Express
                 </SheetTitle>
+                 <SheetDescription className="sr-only">Main navigation menu.</SheetDescription>
               </SheetHeader>
               <nav className="flex flex-col space-y-3">
                 <Button variant="ghost" asChild className="justify-start text-base p-3" onClick={() => setMobileMenuOpen(false)}>
@@ -123,7 +125,10 @@ export default function Navbar() {
                       </Button>
                     </SheetTrigger>
                     <SheetContent className="w-full sm:max-w-md flex flex-col">
-                      <SheetHeader><SheetTitle className="text-2xl">Your Cart</SheetTitle></SheetHeader>
+                      <SheetHeader>
+                        <SheetTitle className="text-2xl">Your Cart</SheetTitle>
+                        <SheetDescription className="sr-only">A summary of items currently in your shopping cart.</SheetDescription>
+                      </SheetHeader>
                       <Separator />
                       <div className="flex-grow overflow-y-auto">
                         <OrderCart
@@ -153,3 +158,4 @@ export default function Navbar() {
     </nav>
   );
 }
+

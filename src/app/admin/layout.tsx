@@ -18,7 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import LogoutButton from "./LogoutButton";
-import NavLink from "./NavLink"; // NavLink is now a client component handling its own path
+import NavLink, { type IconName } from "./NavLink"; // NavLink is now a client component handling its own path
 
 export const metadata: Metadata = {
   title: "Caffico Admin",
@@ -32,13 +32,19 @@ interface AdminLayoutProps {
 export default async function AdminLayout({ children }: AdminLayoutProps) {
   const cookieStore = cookies(); 
   const sessionCookie = cookieStore.get("admin_session")?.value;
+  console.log(`[AdminLayout] Admin session cookie value: ${sessionCookie ? '******' : 'not found'}`); // Don't log actual cookie
+
   const session: AdminSessionPayload | null = await decryptSession(sessionCookie);
+  console.log(`[AdminLayout] Decrypted session object:`, session);
+
 
   // If no session, render a minimal layout (e.g., for the login page).
   // Middleware should handle redirecting to /admin/login if a protected page is accessed without a session.
   if (!session?.role) {
+    console.log('[AdminLayout] No session or role found. Rendering minimal layout (children only). This usually means the login page is being rendered.');
     return <div className="flex min-h-screen flex-col">{children}</div>;
   }
+  console.log(`[AdminLayout] Session role "${session.role}" found. Rendering full admin layout.`);
 
   // If a session exists, proceed to render the full layout.
   // Middleware should handle redirecting from /admin/login to /admin/dashboard if a session exists.
@@ -104,3 +110,4 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
     </div>
   );
 }
+
