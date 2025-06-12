@@ -70,7 +70,7 @@ export default function AdminLoginPage() {
     setIsLoading(true);
     try {
       console.log("[Client Login] Submitting login data for:", data.email);
-      const result = await loginAction(data); // Server action call
+      const result = await loginAction(data); 
       console.log("[Client Login] Result from loginAction:", result);
 
       if (result?.success) {
@@ -79,42 +79,35 @@ export default function AdminLoginPage() {
           description: "Redirecting to your dashboard...",
           variant: "default",
         });
-        router.push("/admin/dashboard"); 
-        router.refresh(); // Force a refresh to ensure server re-evaluates session
+        // Use window.location.href for a full page navigation
+        window.location.href = "/admin/dashboard";
+        // No need for router.refresh() here as it's a full page load
       } else if (result?.error) {
         toast({
           title: "Login Failed",
           description: result.error,
           variant: "destructive",
         });
+        setIsLoading(false); 
       } else {
-        // This case handles if loginAction returns undefined or an unexpected structure
         console.error("[Client Login] Unexpected or undefined result from loginAction:", result);
         toast({
           title: "Login System Error",
           description: "Received an invalid response from the server. Please try again.",
           variant: "destructive",
         });
+        setIsLoading(false); 
       }
     } catch (error: any) {
-      // This catches errors if loginAction() itself throws an unhandled exception,
-      // or if there's a network issue calling the server action.
       console.error("[Client Login] Error during login submission process:", error);
-      // Check if error is NEXT_REDIRECT, should not happen with current loginAction structure
-      if (error.digest?.startsWith('NEXT_REDIRECT')) {
-        console.log("[Client Login] Caught NEXT_REDIRECT on client, letting Next.js handle it.");
-        // Potentially do nothing here or re-throw, but usually this means redirect is in progress
-        // For now, we assume loginAction does not throw this directly to client.
-      } else {
-        toast({
-          title: "Login System Error",
-          description: `An unexpected error occurred: ${error.message || "Please try again."}`,
-          variant: "destructive",
-        });
-      }
-    } finally {
-      setIsLoading(false);
+      toast({
+        title: "Login System Error",
+        description: `An unexpected error occurred: ${error.message || "Please try again."}`,
+        variant: "destructive",
+      });
+      setIsLoading(false); 
     }
+    // setIsLoading(false) is handled in specific branches now to avoid setting it too early before navigation
   };
 
   const onResetPasswordSubmit: SubmitHandler<ResetPasswordFormData> = async (data) => {
