@@ -4,60 +4,59 @@
 import * as z from "zod";
 import { cookies } from "next/headers";
 import { SignJWT } from "jose";
-import type { AdminRole as AppAdminRole } from "@/types"; 
+import type { AdminRole as AppAdminRole } from "@/types";
 import { ADMIN_ROLES } from "@/types";
 import prisma from "@/lib/prisma";
 import bcryptjs from "bcryptjs";
-// Removed redirect from 'next/navigation' as it's no longer called directly here
+// Removed redirect from 'next/navigation' as it's handled client-side now
 
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string(),
 });
 
-const SALT_ROUNDS = 10;
-const FIXED_CONFIRMATION_STRING = "Dhruv the great";
+const SALT_ROUNDS = 10; // This should match what's used in hashPassword.js and prisma/seed.ts
+const FIXED_CONFIRMATION_STRING = "Dhruv the great"; // This should be an env var in a real app
 
-let jwtSecretKey: string | null = null;
+let jwtSecretKeyInstance: string | null = null;
 
-function getJwtSecretKey() {
-  if (jwtSecretKey) return jwtSecretKey;
+function getJwtSecretKey(): string {
+  if (jwtSecretKeyInstance) return jwtSecretKeyInstance;
   const keyFromEnv = process.env.JWT_SECRET_KEY;
   if (!keyFromEnv || keyFromEnv.trim() === "") {
-    console.error("CRITICAL: JWT_SECRET_KEY is not set. This will cause errors.");
+    console.error("CRITICAL: JWT_SECRET_KEY is not set in loginAction. This will cause errors.");
     throw new Error("JWT_SECRET_KEY is not configured on the server.");
   }
-  jwtSecretKey = keyFromEnv;
-  return jwtSecretKey;
+  jwtSecretKeyInstance = keyFromEnv;
+  return jwtSecretKeyInstance;
 }
 
 async function encrypt(payload: any) {
-  const secret = getJwtSecretKey();
+  const secret = getJwtSecretKey(); // Ensures key is fetched/validated
   const key = new TextEncoder().encode(secret);
   return new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setExpirationTime("1d") 
+    .setExpirationTime("1d")
     .sign(key);
 }
 
-
 export async function loginAction(credentials: z.infer<typeof loginSchema>): Promise<{ success: boolean; error?: string }> {
-  console.log("[LoginAction] Started. Input credentials (password redacted):", { email: credentials.email, password: '***' });
-
-  const parsedCredentials = loginSchema.safeParse(credentials);
-
-  if (!parsedCredentials.success) {
-    console.error("[LoginAction] Validation failed:", parsedCredentials.error.issues);
-    return { success: false, error: "Invalid input format for email or password." };
-  } 
-
-  const { email, password } = parsedCredentials.data;
-  const lowercasedEmail = email.toLowerCase();
-  console.log(`[LoginAction] Attempting to find user. Input email: "${email}", Lowercased email for DB query: "${lowercasedEmail}"`);
-
-
+  console.log("[LoginAction] Attempting login for:", credentials.email);
   try {
+    // Ensure JWT_SECRET_KEY is available before proceeding with sensitive operations
+    getJwtSecretKey(); 
+    console.log("[LoginAction] JWT Secret Key check passed.");
+
+    const parsedCredentials = loginSchema.safeParse(credentials);
+    if (!parsedCredentials.success) {
+      console.error("[LoginAction] Validation failed:", parsedCredentials.error.issues);
+      return { success: false, error: "Invalid input format for email or password." };
+    }
+    const { email, password } = parsedCredentials.data;
+    const lowercasedEmail = email.toLowerCase();
+    console.log(`[LoginAction] Credentials parsed. Querying DB for: ${lowercasedEmail}`);
+
     if (!process.env.DATABASE_URL) {
         console.error("[LoginAction] DATABASE_URL is not set.");
         return { success: false, error: "Database connection is not configured." };
@@ -66,28 +65,28 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
     const adminUserRecord = await prisma.adminUser.findUnique({
       where: { email: lowercasedEmail },
     });
+    console.log("[LoginAction] DB query complete. User found:", !!adminUserRecord);
 
     if (!adminUserRecord) {
-      console.log(`[LoginAction] Prisma query for email "${lowercasedEmail}" returned no user. Please verify this email exists (lowercase) in your AdminUser table and that DATABASE_URL is correct.`);
-      return { success: false, error: `Admin user with email "${lowercasedEmail}" not found. Please double-check your email or contact support if the issue persists.` };
+      return { success: false, error: `Admin user with email "${lowercasedEmail}" not found. Please double-check your email.` };
     }
-    console.log(`[LoginAction] User record found for "${lowercasedEmail}":`, { id: adminUserRecord.id, email: adminUserRecord.email, role: adminUserRecord.role });
 
     console.log(`[LoginAction] Comparing provided password with stored hash for user: "${lowercasedEmail}".`);
+    // Use bcryptjs.compareSync as it's CPU-bound and less prone to unhandled promise rejections if not awaited.
+    // If using bcryptjs.compare (async), ensure it's awaited.
     const passwordMatch = bcryptjs.compareSync(password, adminUserRecord.passwordHash);
+    console.log("[LoginAction] Password comparison complete. Match:", passwordMatch);
 
     if (!passwordMatch) {
-      console.log(`[LoginAction] Password mismatch for user: "${lowercasedEmail}"`);
       return { success: false, error: "Invalid email or password." };
     }
-    console.log(`[LoginAction] Password match successful for user: "${lowercasedEmail}"`);
 
-    const expires = new Date(Date.now() + 24 * 60 * 60 * 1000); 
-    const sessionRole: AppAdminRole = adminUserRecord.role as unknown as AppAdminRole;
+    const expires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const sessionRole: AppAdminRole = adminUserRecord.role as AppAdminRole; // Type assertion
 
     const sessionPayload = {
-      userId: adminUserRecord.id, 
-      email: adminUserRecord.email, 
+      userId: adminUserRecord.id,
+      email: adminUserRecord.email,
       role: sessionRole,
     };
 
@@ -98,54 +97,44 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
       name: "admin_session",
       value: sessionToken,
       expires,
-      maxAge: 24 * 60 * 60, 
+      maxAge: 24 * 60 * 60,
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       path: '/',
-      sameSite: 'lax' as const 
+      sameSite: 'lax' as const
     };
 
     cookies().set(cookieOptions);
-    console.log(`[LoginAction] Admin session cookie set with options:`, {
-        name: cookieOptions.name,
-        expires: cookieOptions.expires.toISOString(),
-        httpOnly: cookieOptions.httpOnly,
-        secure: cookieOptions.secure,
-        path: cookieOptions.path,
-        sameSite: cookieOptions.sameSite
-    });
-    console.log(`[LoginAction] Session payload for cookie:`, sessionPayload);
+    console.log("[LoginAction] Admin session cookie set.");
     
-    // Return success instead of redirecting here
-    return { success: true };
+    return { success: true }; // Return success, client will handle redirect
 
   } catch (error: any) {
-    console.error("[LoginAction] Error during login process:", error);
-    // If it's a redirect error (should not happen now), re-throw it
-    if (error.message === 'NEXT_REDIRECT' || (error.digest && typeof error.digest === 'string' && error.digest.startsWith('NEXT_REDIRECT'))) {
-      // This block should ideally not be reached if redirect() is not called.
-      console.error("[LoginAction] Caught a NEXT_REDIRECT error unexpectedly. This should not happen if redirect() is removed from this action.");
-      throw error;
-    }
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred."
-    return { success: false, error: `An unexpected error occurred during login: ${errorMessage}` };
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
+    console.error("[LoginAction] CRITICAL ERROR during login processing:", {
+        message: errorMessage,
+        name: error.name,
+        stack: error.stack,
+        errorObjectString: String(error)
+    });
+    return { success: false, error: `Server error during login: ${errorMessage}` };
   }
 }
 
 export async function resetPasswordAction(credentials: any): Promise<{ success: boolean; error?: string; message?: string }> {
-  console.log("[ResetPasswordAction] Started. Input credentials (password redacted):", { email: credentials.email, newPassword: '***' });
-
-  const { email, confirmationString, newPassword } = credentials;
-
-  if (confirmationString !== FIXED_CONFIRMATION_STRING) {
-    console.log("[ResetPasswordAction] Invalid confirmation string.");
-    return { success: false, error: "Invalid confirmation string." };
-  }
-
-  const lowercasedEmail = email.toLowerCase();
-  console.log(`[ResetPasswordAction] Attempting to find user for password reset. Input email: "${email}", Lowercased email for DB query: "${lowercasedEmail}"`);
-
+  console.log("[ResetPasswordAction] Started for email:", credentials.email);
   try {
+    getJwtSecretKey(); // Ensure JWT secret is available for any potential session-related logic if added later
+
+    const { email, confirmationString, newPassword } = credentials;
+
+    if (confirmationString !== FIXED_CONFIRMATION_STRING) {
+      return { success: false, error: "Invalid confirmation string." };
+    }
+
+    const lowercasedEmail = email.toLowerCase();
+    console.log(`[ResetPasswordAction] Querying DB for: ${lowercasedEmail}`);
+
     if (!process.env.DATABASE_URL) {
         console.error("[ResetPasswordAction] DATABASE_URL is not set.");
         return { success: false, error: "Database connection is not configured." };
@@ -155,10 +144,8 @@ export async function resetPasswordAction(credentials: any): Promise<{ success: 
     });
 
     if (!adminUserRecord) {
-      console.log(`[ResetPasswordAction] Prisma query for email "${lowercasedEmail}" returned no user for password reset. Check DB & DATABASE_URL.`);
-      return { success: false, error: `Admin user with email "${lowercasedEmail}" not found. Cannot reset password.` };
+      return { success: false, error: `Admin user with email "${lowercasedEmail}" not found.` };
     }
-    console.log(`[ResetPasswordAction] User record found for "${lowercasedEmail}".`);
 
     const newPasswordHash = await bcryptjs.hash(newPassword, SALT_ROUNDS);
     console.log(`[ResetPasswordAction] New password hashed for "${lowercasedEmail}".`);
@@ -172,20 +159,24 @@ export async function resetPasswordAction(credentials: any): Promise<{ success: 
     return { success: true, message: "Password has been reset successfully. You can now login with your new password." };
 
   } catch (error: any) {
-    console.error("[ResetPasswordAction] Error during password reset:", error);
-     if (error.message === 'NEXT_REDIRECT' || (error.digest && typeof error.digest === 'string' && error.digest.startsWith('NEXT_REDIRECT'))) {
-      throw error;
-    }
-    const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred."
-    return { success: false, error: `An unexpected error occurred during password reset: ${errorMessage}` };
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
+     console.error("[ResetPasswordAction] CRITICAL ERROR during password reset:", {
+        message: errorMessage,
+        name: error.name,
+        stack: error.stack,
+        errorObjectString: String(error)
+    });
+    return { success: false, error: `Server error during password reset: ${errorMessage}` };
   }
 }
 
-// Import redirect for logoutAction
-import { redirect } from 'next/navigation';
-
 export async function logoutAction() {
+  // No direct redirect call here if middleware is to handle it,
+  // but usually logout is an explicit redirect.
+  // For now, just delete cookie. Middleware should redirect to login if session is gone.
+  console.log("[LogoutAction] Deleting admin_session cookie.");
   cookies().delete("admin_session");
-  console.log("[LogoutAction] Admin session cookie deleted.");
-  redirect("/admin/login"); // Server-side redirect for logout
+  // If a redirect is needed from here, it must be handled carefully to avoid "NEXT_REDIRECT" issues on client.
+  // For instance, return a status and let client redirect, or ensure middleware catches it.
+  // Let's assume middleware will redirect to /admin/login after cookie is cleared and next request is made.
 }

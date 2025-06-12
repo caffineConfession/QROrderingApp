@@ -44,7 +44,6 @@ export default function AdminLoginPage() {
         description: decodeURIComponent(errorParam),
         variant: "destructive",
       });
-      // Clear the error from URL to prevent re-toasting on refresh
       router.replace('/admin/login', { scroll: false }); 
     }
   }, [searchParams, toast, router]);
@@ -69,36 +68,42 @@ export default function AdminLoginPage() {
   const onLoginSubmit: SubmitHandler<LoginFormSchema> = async (data) => {
     setIsLoading(true);
     try {
-      const result = await loginAction(data);
-      if (result.success) {
-        // Server action was successful, cookie is set.
-        // Now perform client-side redirect.
-        router.push("/admin/dashboard");
-        // Optionally refresh to ensure layout re-evaluates session if needed,
-        // though typically router.push to a new route is enough.
-        // router.refresh(); 
-      } else if (result.error) {
+      console.log("[Client Login] Submitting login data for:", data.email);
+      const result = await loginAction(data); // Server action call
+      console.log("[Client Login] Result from loginAction:", result);
+
+      if (result?.success) {
+        toast({
+          title: "Login Successful!",
+          description: "Redirecting to your dashboard...",
+          variant: "default", // default is usually green or neutral
+        });
+        router.push("/admin/dashboard"); // Client-side redirect
+        // router.refresh(); // This ensures server components reload, good after login
+      } else if (result?.error) {
         toast({
           title: "Login Failed",
           description: result.error,
           variant: "destructive",
         });
       } else {
-         toast({
-          title: "Login Attempt Failed",
-          description: "Please check your credentials and try again.",
+        // This case handles if loginAction returns undefined or an unexpected structure
+        console.error("[Client Login] Unexpected or undefined result from loginAction:", result);
+        toast({
+          title: "Login System Error",
+          description: "Received an invalid response from the server. Please try again.",
           variant: "destructive",
         });
       }
     } catch (error: any) {
-      // This catch block is for unexpected errors during the fetch/server action call itself,
-      // not for errors returned by loginAction (like invalid credentials).
+      // This catches errors if loginAction() itself throws an unhandled exception,
+      // or if there's a network issue calling the server action.
+      console.error("[Client Login] Error during login submission process:", error);
       toast({
         title: "Login System Error",
-        description: error.message || "Could not connect to the server. Please try again.",
+        description: error.message || "Could not connect to the server or an unexpected error occurred.",
         variant: "destructive",
       });
-      console.error("Login submission error caught in client:", error);
     } finally {
       setIsLoading(false);
     }
@@ -123,13 +128,13 @@ export default function AdminLoginPage() {
           variant: "destructive",
         });
       }
-    } catch (error) {
+    } catch (error: any) { // Catch any error from resetPasswordAction
+      console.error("[Client ResetPassword] Error during password reset submission:", error);
       toast({
-        title: "Password Reset Error",
-        description: "An unexpected error occurred. Please try again later.",
+        title: "Password Reset System Error",
+        description: error.message || "An unexpected error occurred. Please try again later.",
         variant: "destructive",
       });
-      console.error("Password reset error:", error);
     } finally {
       setIsLoading(false);
     }
