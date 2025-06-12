@@ -8,11 +8,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { KeyRound, Mail, ShieldAlert, LockKeyhole } from "lucide-react";
-import { useState } from "react";
-// useRouter is removed as we'll use window.location
+import { KeyRound, Mail, ShieldAlert, LockKeyhole, RefreshCw } from "lucide-react";
+import { useState, useEffect } from "react";
 import { loginAction, resetPasswordAction } from "./actions";
 import { useToast } from "@/hooks/use-toast";
+import { useRouter, useSearchParams } from "next/navigation";
 
 const loginSchema = z.object({
   email: z.string().email({ message: "Please enter a valid email address." }),
@@ -21,7 +21,6 @@ const loginSchema = z.object({
 
 type LoginFormSchema = z.infer<typeof loginSchema>;
 
-// Define ResetPasswordSchema and ResetPasswordFormData here as they are used by this client component
 export const ResetPasswordSchema = z.object({
   email: z.string().email({ message: "Please enter a valid email address." }),
   confirmationString: z.string().min(1, { message: "Confirmation string is required." }),
@@ -32,8 +31,22 @@ export type ResetPasswordFormData = z.infer<typeof ResetPasswordSchema>;
 
 export default function AdminLoginPage() {
   const { toast } = useToast();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [isLoading, setIsLoading] = useState(false);
   const [showResetForm, setShowResetForm] = useState(false);
+
+  useEffect(() => {
+    const errorParam = searchParams.get('error');
+    if (errorParam) {
+      toast({
+        title: "Login Required",
+        description: decodeURIComponent(errorParam),
+        variant: "destructive",
+      });
+      router.replace('/admin/login', { scroll: false });
+    }
+  }, [searchParams, toast, router]);
 
   const loginForm = useForm<LoginFormSchema>({
     resolver: zodResolver(loginSchema),
@@ -44,7 +57,7 @@ export default function AdminLoginPage() {
   });
 
   const resetPasswordForm = useForm<ResetPasswordFormData>({
-    resolver: zodResolver(ResetPasswordSchema), 
+    resolver: zodResolver(ResetPasswordSchema),
     defaultValues: {
       email: "",
       confirmationString: "",
@@ -56,23 +69,28 @@ export default function AdminLoginPage() {
     setIsLoading(true);
     try {
       const result = await loginAction(data);
-      if (result.success) {
+      if (result && result.error) {
         toast({
-          title: "Login Successful",
-          description: `Welcome! Redirecting to dashboard...`,
-          variant: "default",
+          title: "Login Failed",
+          description: result.error,
+          variant: "destructive",
         });
-        return; // Explicitly stop execution after successful login (server action handles redirect)
-      } else {
-        setIsLoading(false); 
-
-    } catch (error) {
+      } else if (result && !result.success) {
+        toast({
+          title: "Login Attempt Failed",
+          description: "Please check your credentials and try again.",
+          variant: "destructive",
+        });
+      }
+      // If loginAction is successful, it should handle the redirect via `redirect()`.
+      // If it returns here, it implies an issue that wasn't a successful redirect.
+    } catch (error: any) {
       toast({
-        title: "Login Error",
-        description: "An unexpected error occurred. Please try again later.",
+        title: "Login System Error",
+        description: error.message || "Could not connect to the server. Please try again.",
         variant: "destructive",
       });
-      console.error("Login error:", error);
+      console.error("Login submission error:", error);
     } finally {
       setIsLoading(false);
     }
@@ -81,7 +99,7 @@ export default function AdminLoginPage() {
   const onResetPasswordSubmit: SubmitHandler<ResetPasswordFormData> = async (data) => {
     setIsLoading(true);
     try {
-      const result = await resetPasswordAction(data); 
+      const result = await resetPasswordAction(data);
       if (result.success) {
         toast({
           title: "Password Reset Successful",
@@ -89,7 +107,7 @@ export default function AdminLoginPage() {
           variant: "default",
         });
         resetPasswordForm.reset();
-        setShowResetForm(false); 
+        setShowResetForm(false);
       } else {
         toast({
           title: "Password Reset Failed",
@@ -149,6 +167,7 @@ export default function AdminLoginPage() {
               </CardContent>
               <CardFooter className="flex-col space-y-3">
                 <Button type="submit" className="w-full" size="lg" disabled={isLoading}>
+                  {isLoading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : null}
                   {isLoading ? "Logging in..." : "Login"}
                 </Button>
                 <Button type="button" variant="link" size="sm" onClick={() => setShowResetForm(true)} disabled={isLoading}>
@@ -207,6 +226,7 @@ export default function AdminLoginPage() {
               </CardContent>
               <CardFooter className="flex-col space-y-3">
                 <Button type="submit" className="w-full" size="lg" disabled={isLoading}>
+                  {isLoading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : null}
                   {isLoading ? "Resetting..." : "Reset Password"}
                 </Button>
                 <Button type="button" variant="link" size="sm" onClick={() => setShowResetForm(false)} disabled={isLoading}>
