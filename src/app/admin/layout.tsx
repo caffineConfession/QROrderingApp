@@ -19,7 +19,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import LogoutButton from "./LogoutButton";
-import NavLink, { type IconName } from "./NavLink"; // NavLink is now a client component handling its own path
+import NavLink from "./NavLink"; // NavLink is now a client component handling its own path, IconName type also imported
 
 export const metadata: Metadata = {
   title: "Caffico Admin",
@@ -33,16 +33,20 @@ interface AdminLayoutProps {
 export default async function AdminLayout({ children }: AdminLayoutProps) {
   let session: AdminSessionPayload | null = null;
   let sessionError: string | null = null;
+  const cookieStore = cookies(); 
+  const currentPath = cookieStore.get('next-url')?.value || "";
+  const isLoginPage = currentPath.endsWith("/admin/login");
+
+  console.log(`[AdminLayout] Request for path: ${currentPath}`);
 
   try {
-    const cookieStore = cookies(); 
     const sessionCookie = cookieStore.get("admin_session")?.value;
-    console.log(`[AdminLayout] Path: ${cookieStore.get('next-url')?.value || 'N/A'}. Admin session cookie value: ${sessionCookie ? '******' : 'not found'}`);
+    console.log(`[AdminLayout] Admin session cookie value: ${sessionCookie ? '****** (present)' : 'not found'}`);
 
     if (sessionCookie) {
       session = await decryptSession(sessionCookie);
     }
-    console.log(`[AdminLayout] Path: ${cookieStore.get('next-url')?.value || 'N/A'}. Decrypted session object (after potential decrypt):`, session);
+    console.log(`[AdminLayout] Decrypted session object:`, session);
   } catch (e: any) {
     console.error("[AdminLayout] CRITICAL ERROR during session processing in AdminLayout:", e.message, e.stack);
     sessionError = e.message;
@@ -71,27 +75,15 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
     );
   }
   
-  // For /admin/login page, session might be null, or role might be undefined.
-  // The NavLinks and User Menu should only render if session and role are valid.
-  // Children (the actual page like login or dashboard) will always be rendered.
-  const currentPath = cookies().get('next-url')?.value || "";
-  const isLoginPage = currentPath.endsWith("/admin/login");
-
   if (!session?.userId || !session?.role) {
     if (!isLoginPage) {
-        // This case should ideally be handled by middleware redirecting to login for protected routes.
-        // If middleware didn't redirect, but we still have no session for a non-login admin page,
-        // rendering children might be okay if the page itself handles no session.
-        console.log('[AdminLayout] No session or role found for a protected admin page. Rendering children (page should handle this, or middleware missed it).');
+        console.log('[AdminLayout] No session or role found for a protected admin page. Middleware should have redirected. Rendering children (page should handle this).');
     } else {
-        // On login page, no session is expected.
-        console.log('[AdminLayout] On login page and no session/role found. Rendering minimal layout (children only).');
+        console.log('[AdminLayout] On login page and no session/role found (expected). Rendering minimal layout.');
     }
-    // Render children (e.g. Login page) within a basic structure if no session
     return <div className="flex min-h-screen flex-col">{children}</div>;
   }
   
-  // If we have a session and role, render the full admin layout
   console.log(`[AdminLayout] Session role "${session.role}" found. Rendering full admin layout for path: ${currentPath}`);
 
   return (
