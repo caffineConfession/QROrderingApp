@@ -44,7 +44,8 @@ export default function AdminLoginPage() {
         description: decodeURIComponent(errorParam),
         variant: "destructive",
       });
-      router.replace('/admin/login', { scroll: false });
+      // Clear the error from URL to prevent re-toasting on refresh
+      router.replace('/admin/login', { scroll: false }); 
     }
   }, [searchParams, toast, router]);
 
@@ -69,28 +70,35 @@ export default function AdminLoginPage() {
     setIsLoading(true);
     try {
       const result = await loginAction(data);
-      if (result && result.error) {
+      if (result.success) {
+        // Server action was successful, cookie is set.
+        // Now perform client-side redirect.
+        router.push("/admin/dashboard");
+        // Optionally refresh to ensure layout re-evaluates session if needed,
+        // though typically router.push to a new route is enough.
+        // router.refresh(); 
+      } else if (result.error) {
         toast({
           title: "Login Failed",
           description: result.error,
           variant: "destructive",
         });
-      } else if (result && !result.success) {
-        toast({
+      } else {
+         toast({
           title: "Login Attempt Failed",
           description: "Please check your credentials and try again.",
           variant: "destructive",
         });
       }
-      // If loginAction is successful, it should handle the redirect via `redirect()`.
-      // If it returns here, it implies an issue that wasn't a successful redirect.
     } catch (error: any) {
+      // This catch block is for unexpected errors during the fetch/server action call itself,
+      // not for errors returned by loginAction (like invalid credentials).
       toast({
         title: "Login System Error",
         description: error.message || "Could not connect to the server. Please try again.",
         variant: "destructive",
       });
-      console.error("Login submission error:", error);
+      console.error("Login submission error caught in client:", error);
     } finally {
       setIsLoading(false);
     }

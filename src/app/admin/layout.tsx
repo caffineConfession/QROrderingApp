@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import LogoutButton from "./LogoutButton";
 import NavLink, { type IconName } from "./NavLink"; 
+import type { NextRequest } from "next/server"; // For request type in development
 
 export const metadata: Metadata = {
   title: "Caffico Admin",
@@ -37,12 +38,12 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
   
   try {
     const sessionCookie = cookieStore.get("admin_session")?.value;
-    console.log(`[AdminLayout] Admin session cookie value: ${sessionCookie ? '****** (present)' : 'not found'}`);
+    // console.log(`[AdminLayout] Admin session cookie value: ${sessionCookie ? '****** (present)' : 'not found'}`);
 
     if (sessionCookie) {
       session = await decryptSession(sessionCookie);
     }
-    console.log(`[AdminLayout] Decrypted session object:`, session);
+    // console.log(`[AdminLayout] Decrypted session object:`, session);
   } catch (e: any) {
     console.error("[AdminLayout] CRITICAL ERROR during session processing in AdminLayout:", e.message, e.stack);
     sessionError = e.message;
@@ -76,7 +77,7 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
   // In this case, we render a minimal layout. Middleware should handle redirection for protected pages.
   // The Login page will be rendered as {children} within this minimal layout.
   if (!session?.userId || !session?.role) {
-    console.log('[AdminLayout] No valid session (userId or role missing). Rendering minimal layout for children (e.g., Login Page or error for protected page).');
+    // console.log('[AdminLayout] No valid session (userId or role missing). Rendering minimal layout for children (e.g., Login Page or error for protected page).');
     return (
       <div className="flex min-h-screen flex-col">
         {children}
@@ -86,7 +87,7 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
   
   // If we reach here, the session is valid, and we render the full admin layout.
   const sessionRoleForNav = session.role as AppAdminRole;
-  console.log(`[AdminLayout] Session role "${sessionRoleForNav}" found. Rendering full admin layout.`);
+  // console.log(`[AdminLayout] Session role "${sessionRoleForNav}" found. Rendering full admin layout.`);
 
   return (
     <div className="grid min-h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">

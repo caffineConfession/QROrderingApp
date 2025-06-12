@@ -8,8 +8,7 @@ import type { AdminRole as AppAdminRole } from "@/types";
 import { ADMIN_ROLES } from "@/types";
 import prisma from "@/lib/prisma";
 import bcryptjs from "bcryptjs";
-import type { AdminRole as PrismaAdminRole } from "@prisma/client";
-import { redirect } from 'next/navigation'; // Added import for redirect
+// Removed redirect from 'next/navigation' as it's no longer called directly here
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -19,17 +18,21 @@ const loginSchema = z.object({
 const SALT_ROUNDS = 10;
 const FIXED_CONFIRMATION_STRING = "Dhruv the great";
 
-async function getJwtSecretKey() {
-  const JWT_SECRET_KEY = process.env.JWT_SECRET_KEY;
-  if (!JWT_SECRET_KEY || JWT_SECRET_KEY.trim() === "") {
+let jwtSecretKey: string | null = null;
+
+function getJwtSecretKey() {
+  if (jwtSecretKey) return jwtSecretKey;
+  const keyFromEnv = process.env.JWT_SECRET_KEY;
+  if (!keyFromEnv || keyFromEnv.trim() === "") {
     console.error("CRITICAL: JWT_SECRET_KEY is not set. This will cause errors.");
     throw new Error("JWT_SECRET_KEY is not configured on the server.");
   }
-  return JWT_SECRET_KEY;
+  jwtSecretKey = keyFromEnv;
+  return jwtSecretKey;
 }
 
 async function encrypt(payload: any) {
-  const secret = await getJwtSecretKey();
+  const secret = getJwtSecretKey();
   const key = new TextEncoder().encode(secret);
   return new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
@@ -113,12 +116,15 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
     });
     console.log(`[LoginAction] Session payload for cookie:`, sessionPayload);
     
-    redirect("/admin/dashboard"); 
+    // Return success instead of redirecting here
+    return { success: true };
 
   } catch (error: any) {
     console.error("[LoginAction] Error during login process:", error);
-    // Check if it's a redirect error and re-throw it
+    // If it's a redirect error (should not happen now), re-throw it
     if (error.message === 'NEXT_REDIRECT' || (error.digest && typeof error.digest === 'string' && error.digest.startsWith('NEXT_REDIRECT'))) {
+      // This block should ideally not be reached if redirect() is not called.
+      console.error("[LoginAction] Caught a NEXT_REDIRECT error unexpectedly. This should not happen if redirect() is removed from this action.");
       throw error;
     }
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred."
@@ -175,9 +181,11 @@ export async function resetPasswordAction(credentials: any): Promise<{ success: 
   }
 }
 
+// Import redirect for logoutAction
+import { redirect } from 'next/navigation';
 
 export async function logoutAction() {
   cookies().delete("admin_session");
   console.log("[LogoutAction] Admin session cookie deleted.");
-  redirect("/admin/login");
+  redirect("/admin/login"); // Server-side redirect for logout
 }
