@@ -44,6 +44,7 @@ export default function AdminLoginPage() {
         description: decodeURIComponent(errorParam),
         variant: "destructive",
       });
+      // Clear the error from URL to prevent re-toasting on refresh
       router.replace('/admin/login', { scroll: false }); 
     }
   }, [searchParams, toast, router]);
@@ -76,10 +77,10 @@ export default function AdminLoginPage() {
         toast({
           title: "Login Successful!",
           description: "Redirecting to your dashboard...",
-          variant: "default", // default is usually green or neutral
+          variant: "default",
         });
-        router.push("/admin/dashboard"); // Client-side redirect
-        // router.refresh(); // This ensures server components reload, good after login
+        router.push("/admin/dashboard"); 
+        router.refresh(); // Force a refresh to ensure server re-evaluates session
       } else if (result?.error) {
         toast({
           title: "Login Failed",
@@ -99,11 +100,18 @@ export default function AdminLoginPage() {
       // This catches errors if loginAction() itself throws an unhandled exception,
       // or if there's a network issue calling the server action.
       console.error("[Client Login] Error during login submission process:", error);
-      toast({
-        title: "Login System Error",
-        description: error.message || "Could not connect to the server or an unexpected error occurred.",
-        variant: "destructive",
-      });
+      // Check if error is NEXT_REDIRECT, should not happen with current loginAction structure
+      if (error.digest?.startsWith('NEXT_REDIRECT')) {
+        console.log("[Client Login] Caught NEXT_REDIRECT on client, letting Next.js handle it.");
+        // Potentially do nothing here or re-throw, but usually this means redirect is in progress
+        // For now, we assume loginAction does not throw this directly to client.
+      } else {
+        toast({
+          title: "Login System Error",
+          description: `An unexpected error occurred: ${error.message || "Please try again."}`,
+          variant: "destructive",
+        });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -128,7 +136,7 @@ export default function AdminLoginPage() {
           variant: "destructive",
         });
       }
-    } catch (error: any) { // Catch any error from resetPasswordAction
+    } catch (error: any) { 
       console.error("[Client ResetPassword] Error during password reset submission:", error);
       toast({
         title: "Password Reset System Error",

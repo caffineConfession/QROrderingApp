@@ -1,13 +1,14 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
+import { headers } from 'next/headers'; // For reading current path in Server Component
 // Icons used directly in this layout, not passed as props to NavLink
 import { Coffee, AlertCircle } from "lucide-react"; 
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { cookies } from "next/headers"; 
 import { decryptSession } from "@/lib/session";
-import type { AdminSessionPayload, AdminRole as AppAdminRole } from "@/types"; // Ensure AdminRole is imported from types
+import type { AdminSessionPayload, AdminRole as AppAdminRole } from "@/types"; 
 import { ADMIN_ROLES } from "@/types";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -20,7 +21,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import LogoutButton from "./LogoutButton";
 import NavLink, { type IconName } from "./NavLink"; 
-import type { NextRequest } from "next/server"; // For request type in development
+import type { NextRequest } from "next/server"; 
 
 export const metadata: Metadata = {
   title: "Caffico Admin",
@@ -36,19 +37,21 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
   let sessionError: string | null = null;
   const cookieStore = cookies(); 
   
+  // Get current pathname for logging
+  const heads = headers();
+  const pathnameFromHeaders = heads.get('next-url') || 'unknown'; // next-url is set by middleware or Next.js
+  console.log(`[AdminLayout] Rendering for actual pathname: ${pathnameFromHeaders}`);
+
   try {
     const sessionCookie = cookieStore.get("admin_session")?.value;
-    // console.log(`[AdminLayout] Admin session cookie value: ${sessionCookie ? '****** (present)' : 'not found'}`);
-
     if (sessionCookie) {
       session = await decryptSession(sessionCookie);
     }
-    // console.log(`[AdminLayout] Decrypted session object:`, session);
+    console.log(`[AdminLayout] Session for this render:`, session);
   } catch (e: any) {
     console.error("[AdminLayout] CRITICAL ERROR during session processing in AdminLayout:", e.message, e.stack);
     sessionError = e.message;
   }
-
 
   if (sessionError) {
     console.error(`[AdminLayout] Rendering error state due to session processing error: ${sessionError}`);
@@ -72,12 +75,11 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
     );
   }
   
-  // If there's no valid session (userId AND role must be present)
-  // This means the user is not logged in, or the session is invalid/corrupted.
-  // In this case, we render a minimal layout. Middleware should handle redirection for protected pages.
-  // The Login page will be rendered as {children} within this minimal layout.
   if (!session?.userId || !session?.role) {
-    // console.log('[AdminLayout] No valid session (userId or role missing). Rendering minimal layout for children (e.g., Login Page or error for protected page).');
+    console.log('[AdminLayout] No valid session (userId or role missing). Rendering minimal layout for children (e.g., Login Page or error for protected page).');
+    // Log what children are in this case for debugging
+    const childComponent = children as React.ReactElement;
+    console.log('[AdminLayout Minimal] Children received:', typeof children, childComponent?.type?.displayName || childComponent?.type?.name || 'Unknown component type');
     return (
       <div className="flex min-h-screen flex-col">
         {children}
@@ -85,9 +87,11 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
     );
   }
   
-  // If we reach here, the session is valid, and we render the full admin layout.
   const sessionRoleForNav = session.role as AppAdminRole;
-  // console.log(`[AdminLayout] Session role "${sessionRoleForNav}" found. Rendering full admin layout.`);
+  console.log(`[AdminLayout] Session role "${sessionRoleForNav}" found. Rendering full admin layout.`);
+  const childComponentFull = children as React.ReactElement;
+  console.log('[AdminLayout Full] Children received:', typeof children, childComponentFull?.type?.displayName || childComponentFull?.type?.name || 'Unknown component type');
+
 
   return (
     <div className="grid min-h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
@@ -144,7 +148,10 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
           </DropdownMenu>
         </header>
         <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6 bg-background">
-          {children}
+          {/* Using pathnameFromHeaders as key might help ensure children re-render on navigation */}
+          <div key={pathnameFromHeaders}>
+            {children}
+          </div>
         </main>
       </div>
     </div>

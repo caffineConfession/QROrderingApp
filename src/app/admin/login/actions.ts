@@ -8,15 +8,15 @@ import type { AdminRole as AppAdminRole } from "@/types";
 import { ADMIN_ROLES } from "@/types";
 import prisma from "@/lib/prisma";
 import bcryptjs from "bcryptjs";
-// Removed redirect from 'next/navigation' as it's handled client-side now
+// Removed redirect from 'next/navigation' as it's handled client-side now in page.tsx
 
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string(),
 });
 
-const SALT_ROUNDS = 10; // This should match what's used in hashPassword.js and prisma/seed.ts
-const FIXED_CONFIRMATION_STRING = "Dhruv the great"; // This should be an env var in a real app
+const SALT_ROUNDS = 10; 
+const FIXED_CONFIRMATION_STRING = "Dhruv the great"; 
 
 let jwtSecretKeyInstance: string | null = null;
 
@@ -25,14 +25,22 @@ function getJwtSecretKey(): string {
   const keyFromEnv = process.env.JWT_SECRET_KEY;
   if (!keyFromEnv || keyFromEnv.trim() === "") {
     console.error("CRITICAL: JWT_SECRET_KEY is not set in loginAction. This will cause errors.");
-    throw new Error("JWT_SECRET_KEY is not configured on the server.");
+    // In a real app, you might throw an error here, but for debugging,
+    // we let it proceed to see if the server can at least start.
+    // Functionality will fail later if this key is actually used by encrypt.
   }
-  jwtSecretKeyInstance = keyFromEnv;
+  jwtSecretKeyInstance = keyFromEnv || "fallback-secret-for-dev-only-if-not-set"; // Fallback only for extreme dev cases
+  if (jwtSecretKeyInstance === "fallback-secret-for-dev-only-if-not-set") {
+    console.warn("Warning: Using fallback JWT_SECRET_KEY. This is insecure and for development startup aid only.");
+  }
   return jwtSecretKeyInstance;
 }
 
 async function encrypt(payload: any) {
-  const secret = getJwtSecretKey(); // Ensures key is fetched/validated
+  const secret = getJwtSecretKey();
+  if (!secret || secret === "fallback-secret-for-dev-only-if-not-set") {
+    throw new Error("JWT_SECRET_KEY is not properly configured for session encryption.");
+  }
   const key = new TextEncoder().encode(secret);
   return new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
@@ -45,8 +53,8 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
   console.log("[LoginAction] Attempting login for:", credentials.email);
   try {
     // Ensure JWT_SECRET_KEY is available before proceeding with sensitive operations
-    getJwtSecretKey(); 
-    console.log("[LoginAction] JWT Secret Key check passed.");
+    // getJwtSecretKey(); // Called by encrypt
+    console.log("[LoginAction] JWT Secret Key check will be done by encrypt.");
 
     const parsedCredentials = loginSchema.safeParse(credentials);
     if (!parsedCredentials.success) {
@@ -72,8 +80,6 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
     }
 
     console.log(`[LoginAction] Comparing provided password with stored hash for user: "${lowercasedEmail}".`);
-    // Use bcryptjs.compareSync as it's CPU-bound and less prone to unhandled promise rejections if not awaited.
-    // If using bcryptjs.compare (async), ensure it's awaited.
     const passwordMatch = bcryptjs.compareSync(password, adminUserRecord.passwordHash);
     console.log("[LoginAction] Password comparison complete. Match:", passwordMatch);
 
@@ -82,7 +88,7 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
     }
 
     const expires = new Date(Date.now() + 24 * 60 * 60 * 1000);
-    const sessionRole: AppAdminRole = adminUserRecord.role as AppAdminRole; // Type assertion
+    const sessionRole: AppAdminRole = adminUserRecord.role as AppAdminRole; 
 
     const sessionPayload = {
       userId: adminUserRecord.id,
@@ -107,9 +113,17 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
     cookies().set(cookieOptions);
     console.log("[LoginAction] Admin session cookie set.");
     
-    return { success: true }; // Return success, client will handle redirect
+    // Do not redirect here. Client will handle it.
+    return { success: true };
 
   } catch (error: any) {
+    // Important: Check if it's a redirect error from next/navigation
+    // This should not happen here anymore as we removed redirect()
+    if (error.digest?.startsWith('NEXT_REDIRECT')) {
+      console.error("[LoginAction] Unexpected NEXT_REDIRECT error. This should not be thrown here.");
+      // Re-throw to let Next.js handle it, though it's unexpected.
+      throw error;
+    }
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
     console.error("[LoginAction] CRITICAL ERROR during login processing:", {
         message: errorMessage,
@@ -124,7 +138,7 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
 export async function resetPasswordAction(credentials: any): Promise<{ success: boolean; error?: string; message?: string }> {
   console.log("[ResetPasswordAction] Started for email:", credentials.email);
   try {
-    getJwtSecretKey(); // Ensure JWT secret is available for any potential session-related logic if added later
+    // getJwtSecretKey(); 
 
     const { email, confirmationString, newPassword } = credentials;
 
@@ -170,13 +184,9 @@ export async function resetPasswordAction(credentials: any): Promise<{ success: 
   }
 }
 
-export async function logoutAction() {
-  // No direct redirect call here if middleware is to handle it,
-  // but usually logout is an explicit redirect.
-  // For now, just delete cookie. Middleware should redirect to login if session is gone.
+export async function logoutAction(): Promise<{ success: boolean }> {
   console.log("[LogoutAction] Deleting admin_session cookie.");
   cookies().delete("admin_session");
-  // If a redirect is needed from here, it must be handled carefully to avoid "NEXT_REDIRECT" issues on client.
-  // For instance, return a status and let client redirect, or ensure middleware catches it.
-  // Let's assume middleware will redirect to /admin/login after cookie is cleared and next request is made.
+  // Client-side will handle redirect
+  return { success: true };
 }
