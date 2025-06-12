@@ -5,10 +5,9 @@ import * as z from "zod";
 import { cookies } from "next/headers";
 import { SignJWT } from "jose";
 import type { AdminRole as AppAdminRole } from "@/types";
-import { ADMIN_ROLES } from "@/types";
 import prisma from "@/lib/prisma";
 import bcryptjs from "bcryptjs";
-// Removed redirect from 'next/navigation' as it's handled client-side now in page.tsx
+import { redirect } from 'next/navigation'; // Ensure redirect is imported
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -25,13 +24,13 @@ function getJwtSecretKey(): string {
   const keyFromEnv = process.env.JWT_SECRET_KEY;
   if (!keyFromEnv || keyFromEnv.trim() === "") {
     console.error("CRITICAL: JWT_SECRET_KEY is not set in loginAction. This will cause errors.");
-    // In a real app, you might throw an error here, but for debugging,
-    // we let it proceed to see if the server can at least start.
-    // Functionality will fail later if this key is actually used by encrypt.
-  }
-  jwtSecretKeyInstance = keyFromEnv || "fallback-secret-for-dev-only-if-not-set"; // Fallback only for extreme dev cases
-  if (jwtSecretKeyInstance === "fallback-secret-for-dev-only-if-not-set") {
-    console.warn("Warning: Using fallback JWT_SECRET_KEY. This is insecure and for development startup aid only.");
+    // Fallback only for extreme dev cases - SHOULD BE SET IN .env
+    jwtSecretKeyInstance = "fallback-secret-for-dev-only-if-not-set"; 
+    if (jwtSecretKeyInstance === "fallback-secret-for-dev-only-if-not-set") {
+      console.warn("Warning: Using fallback JWT_SECRET_KEY. This is insecure.");
+    }
+  } else {
+    jwtSecretKeyInstance = keyFromEnv;
   }
   return jwtSecretKeyInstance;
 }
@@ -49,13 +48,9 @@ async function encrypt(payload: any) {
     .sign(key);
 }
 
-export async function loginAction(credentials: z.infer<typeof loginSchema>): Promise<{ success: boolean; error?: string }> {
+export async function loginAction(credentials: z.infer<typeof loginSchema>): Promise<{ success: boolean; error?: string } | void> {
   console.log("[LoginAction] Attempting login for:", credentials.email);
   try {
-    // Ensure JWT_SECRET_KEY is available before proceeding with sensitive operations
-    // getJwtSecretKey(); // Called by encrypt
-    console.log("[LoginAction] JWT Secret Key check will be done by encrypt.");
-
     const parsedCredentials = loginSchema.safeParse(credentials);
     if (!parsedCredentials.success) {
       console.error("[LoginAction] Validation failed:", parsedCredentials.error.issues);
@@ -63,8 +58,7 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
     }
     const { email, password } = parsedCredentials.data;
     const lowercasedEmail = email.toLowerCase();
-    console.log(`[LoginAction] Credentials parsed. Querying DB for: ${lowercasedEmail}`);
-
+    
     if (!process.env.DATABASE_URL) {
         console.error("[LoginAction] DATABASE_URL is not set.");
         return { success: false, error: "Database connection is not configured." };
@@ -73,15 +67,12 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
     const adminUserRecord = await prisma.adminUser.findUnique({
       where: { email: lowercasedEmail },
     });
-    console.log("[LoginAction] DB query complete. User found:", !!adminUserRecord);
 
     if (!adminUserRecord) {
-      return { success: false, error: `Admin user with email "${lowercasedEmail}" not found. Please double-check your email.` };
+      return { success: false, error: `Admin user with email "${lowercasedEmail}" not found.` };
     }
 
-    console.log(`[LoginAction] Comparing provided password with stored hash for user: "${lowercasedEmail}".`);
     const passwordMatch = bcryptjs.compareSync(password, adminUserRecord.passwordHash);
-    console.log("[LoginAction] Password comparison complete. Match:", passwordMatch);
 
     if (!passwordMatch) {
       return { success: false, error: "Invalid email or password." };
@@ -99,46 +90,45 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
     const sessionToken = await encrypt(sessionPayload);
     console.log(`[LoginAction] Session token created for user: "${lowercasedEmail}"`);
 
-    const cookieOptions = {
+    cookies().set({
       name: "admin_session",
       value: sessionToken,
       expires,
-      maxAge: 24 * 60 * 60,
+      maxAge: 24 * 60 * 60, // 1 day in seconds
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       path: '/',
       sameSite: 'lax' as const
-    };
-
-    cookies().set(cookieOptions);
+    });
     console.log("[LoginAction] Admin session cookie set.");
     
-    // Do not redirect here. Client will handle it.
-    return { success: true };
+    // Perform server-side redirect. This will throw a NEXT_REDIRECT error.
+    redirect('/admin/dashboard'); 
+    // Code below redirect() will not be executed if redirect happens.
 
   } catch (error: any) {
-    // Important: Check if it's a redirect error from next/navigation
-    // This should not happen here anymore as we removed redirect()
-    if (error.digest?.startsWith('NEXT_REDIRECT')) {
-      console.error("[LoginAction] Unexpected NEXT_REDIRECT error. This should not be thrown here.");
-      // Re-throw to let Next.js handle it, though it's unexpected.
+    // If the error is NEXT_REDIRECT, re-throw it so Next.js can handle it.
+    if (error.digest?.includes('NEXT_REDIRECT')) {
+      console.log("[LoginAction] Caught NEXT_REDIRECT, re-throwing.");
       throw error;
     }
+    // Handle other errors
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
-    console.error("[LoginAction] CRITICAL ERROR during login processing:", {
-        message: errorMessage,
-        name: error.name,
-        stack: error.stack,
-        errorObjectString: String(error)
-    });
+    console.error("[LoginAction] CRITICAL ERROR during login processing:", error);
     return { success: false, error: `Server error during login: ${errorMessage}` };
   }
+}
+
+export async function logoutAction(): Promise<void> {
+  console.log("[LogoutAction] Deleting admin_session cookie.");
+  cookies().delete("admin_session");
+  redirect('/admin/login'); // Perform server-side redirect
 }
 
 export async function resetPasswordAction(credentials: any): Promise<{ success: boolean; error?: string; message?: string }> {
   console.log("[ResetPasswordAction] Started for email:", credentials.email);
   try {
-    // getJwtSecretKey(); 
+    // getJwtSecretKey(); // Ensure key is checked, called by encrypt if that were used here.
 
     const { email, confirmationString, newPassword } = credentials;
 
@@ -182,11 +172,4 @@ export async function resetPasswordAction(credentials: any): Promise<{ success: 
     });
     return { success: false, error: `Server error during password reset: ${errorMessage}` };
   }
-}
-
-export async function logoutAction(): Promise<{ success: boolean }> {
-  console.log("[LogoutAction] Deleting admin_session cookie.");
-  cookies().delete("admin_session");
-  // Client-side will handle redirect
-  return { success: true };
 }

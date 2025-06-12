@@ -18,7 +18,6 @@ const loginSchema = z.object({
   email: z.string().email({ message: "Please enter a valid email address." }),
   password: z.string().min(1, { message: "Password is required." }),
 });
-
 type LoginFormSchema = z.infer<typeof loginSchema>;
 
 export const ResetPasswordSchema = z.object({
@@ -28,10 +27,9 @@ export const ResetPasswordSchema = z.object({
 });
 export type ResetPasswordFormData = z.infer<typeof ResetPasswordSchema>;
 
-
 export default function AdminLoginPage() {
   const { toast } = useToast();
-  const router = useRouter();
+  const router = useRouter(); // Keep router for other potential uses like router.replace
   const searchParams = useSearchParams();
   const [isLoading, setIsLoading] = useState(false);
   const [showResetForm, setShowResetForm] = useState(false);
@@ -70,44 +68,51 @@ export default function AdminLoginPage() {
     setIsLoading(true);
     try {
       console.log("[Client Login] Submitting login data for:", data.email);
+      // The loginAction will either redirect or return an error object.
+      // It no longer returns { success: true } if redirecting.
       const result = await loginAction(data); 
-      console.log("[Client Login] Result from loginAction:", result);
 
-      if (result?.success) {
-        toast({
-          title: "Login Successful!",
-          description: "Redirecting to your dashboard...",
-          variant: "default",
-        });
-        // Use window.location.href for a full page navigation
-        window.location.href = "/admin/dashboard";
-        // No need for router.refresh() here as it's a full page load
-      } else if (result?.error) {
+      // If 'result' is defined, it means loginAction returned an error object.
+      if (result && result.error) {
         toast({
           title: "Login Failed",
           description: result.error,
           variant: "destructive",
         });
-        setIsLoading(false); 
-      } else {
-        console.error("[Client Login] Unexpected or undefined result from loginAction:", result);
-        toast({
-          title: "Login System Error",
-          description: "Received an invalid response from the server. Please try again.",
+      } else if (result && !result.success) {
+        // Fallback for other non-success scenarios without specific error
+         toast({
+          title: "Login Failed",
+          description: "An unknown issue occurred during login.",
           variant: "destructive",
         });
-        setIsLoading(false); 
       }
+      // If loginAction successfully redirects, this part of the code (after await) 
+      // might not be reached, or the component might unmount.
+      // No explicit client-side redirect (router.push or window.location.href) is needed here
+      // as the server action handles it.
+
     } catch (error: any) {
+      // This catch block is primarily for network errors or if loginAction throws
+      // an error that is *not* NEXT_REDIRECT.
+      // NEXT_REDIRECT errors are typically handled internally by Next.js and result in navigation.
       console.error("[Client Login] Error during login submission process:", error);
-      toast({
-        title: "Login System Error",
-        description: `An unexpected error occurred: ${error.message || "Please try again."}`,
-        variant: "destructive",
-      });
-      setIsLoading(false); 
+      if (error.digest?.includes('NEXT_REDIRECT')) {
+        // This is an expected internal error when redirect() is called from a server action.
+        // Next.js should handle this by performing the redirect. No user-facing toast is needed.
+        console.log("[Client Login] NEXT_REDIRECT caught. Server should handle redirection.");
+      } else {
+        toast({
+          title: "Login System Error",
+          description: `An unexpected error occurred: ${error.message || "Please try again."}`,
+          variant: "destructive",
+        });
+      }
+    } finally {
+      // Only set isLoading to false if we're still on the page (i.e., redirect didn't happen or failed)
+      // It's generally safe to call it, but helps manage button state if error occurs before redirect.
+      setIsLoading(false);
     }
-    // setIsLoading(false) is handled in specific branches now to avoid setting it too early before navigation
   };
 
   const onResetPasswordSubmit: SubmitHandler<ResetPasswordFormData> = async (data) => {

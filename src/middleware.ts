@@ -7,56 +7,73 @@ const ADMIN_LOGIN_PATH = '/admin/login';
 const ADMIN_DASHBOARD_PATH = '/admin/dashboard';
 const ADMIN_BASE_PATH = '/admin';
 
-// Add paths that should be accessible without authentication
 const PUBLIC_ADMIN_PATHS = [ADMIN_LOGIN_PATH];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('x-next-pathname', pathname); // Make pathname available to Server Components via headers
+
   console.log(`[Middleware] Request for path: ${pathname}`);
 
-  // If it's not an admin path, let it pass
   if (!pathname.startsWith(ADMIN_BASE_PATH)) {
-    console.log(`[Middleware] Path "${pathname}" is not an admin path. Allowing.`);
-    return NextResponse.next();
+    return NextResponse.next({ request: { headers: requestHeaders } });
   }
 
   const sessionCookieValue = request.cookies.get('admin_session')?.value;
-  // Log cookie only for relevant paths for brevity, but always log its presence/absence
-  console.log(`[Middleware] Path: ${pathname}. Checking for 'admin_session' cookie. Found: ${sessionCookieValue ? 'Yes' : 'No'}`);
+  console.log(`[Middleware] Path: ${pathname}. admin_session cookie value: '${sessionCookieValue || 'not found'}'`);
 
-
-  const session = await decryptSession(sessionCookieValue);
-  if (pathname.startsWith(ADMIN_BASE_PATH)) { // Log decrypted session for all admin paths for debugging
-    console.log(`[Middleware] Path: ${pathname}. Decrypted session object from cookie:`, session);
-  }
-
-  // User is trying to access a protected admin page
-  if (!PUBLIC_ADMIN_PATHS.includes(pathname)) {
-    if (!session?.userId || !session?.role) { // More robust check for a valid session
-      console.log(`[Middleware] Path "${pathname}" is PROTECTED. Session invalid or role/userId missing. Redirecting to login.`);
-      console.log(`[Middleware] >> Details: session.userId=${session?.userId}, session.role=${session?.role}`);
-      return NextResponse.redirect(new URL(ADMIN_LOGIN_PATH, request.url));
+  let session = null;
+  if (sessionCookieValue) {
+    try {
+      session = await decryptSession(sessionCookieValue);
+      console.log(`[Middleware] Path: ${pathname}. Decrypted session:`, session ? JSON.stringify(session) : 'null');
+    } catch (e: any) {
+      console.error(`[Middleware] Path: ${pathname}. Error decrypting session:`, e.message);
+      const loginUrl = new URL(ADMIN_LOGIN_PATH, request.url);
+      loginUrl.searchParams.set('error', 'Invalid session. Please login again.');
+      const response = NextResponse.redirect(loginUrl);
+      response.cookies.delete('admin_session', { path: '/' }); // Ensure cookie is cleared
+      return response;
     }
-    // If session is valid, allow access to protected page
-    console.log(`[Middleware] Path "${pathname}" is PROTECTED. Session valid. Allowing access.`);
-    return NextResponse.next();
+  } else {
+    console.log(`[Middleware] Path: ${pathname}. No session cookie found.`);
   }
 
-  // User is trying to access a public admin page (e.g., /admin/login)
+  // Protected admin page
+  if (!PUBLIC_ADMIN_PATHS.includes(pathname)) {
+    if (!session?.userId || !session?.role) {
+      console.log(`[Middleware] Path "${pathname}" is PROTECTED. Session invalid or role/userId missing. Redirecting to login.`);
+      const loginUrl = new URL(ADMIN_LOGIN_PATH, request.url);
+      loginUrl.searchParams.set('error', 'Session expired or invalid. Please login again.');
+      return NextResponse.redirect(loginUrl);
+    }
+    console.log(`[Middleware] Path "${pathname}" is PROTECTED. Session valid. Allowing access.`);
+    const response = NextResponse.next({ request: { headers: requestHeaders } });
+    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
+    return response;
+  }
+
+  // Public admin page (e.g., /admin/login)
   if (PUBLIC_ADMIN_PATHS.includes(pathname)) {
-    // If on /admin/login AND a valid session exists, redirect to dashboard
     if (pathname === ADMIN_LOGIN_PATH && session?.userId && session?.role) {
       console.log(`[Middleware] Path is ADMIN_LOGIN_PATH. Session is VALID. Redirecting to dashboard.`);
-      return NextResponse.redirect(new URL(ADMIN_DASHBOARD_PATH, request.url));
+      const dashboardUrl = new URL(ADMIN_DASHBOARD_PATH, request.url);
+      const response = NextResponse.redirect(dashboardUrl);
+      // Add cache control to redirect response as well
+      response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      response.headers.set('Pragma', 'no-cache');
+      response.headers.set('Expires', '0');
+      return response;
     }
-    // Otherwise, allow access to the public admin page (e.g., login page with no session, or other future public admin pages)
-    console.log(`[Middleware] Path "${pathname}" is PUBLIC admin path. Allowing access (e.g. login page for non-logged-in user).`);
-    return NextResponse.next();
+    console.log(`[Middleware] Path "${pathname}" is PUBLIC admin path. Allowing access.`);
+    return NextResponse.next({ request: { headers: requestHeaders } });
   }
 
-  // Fallback, should ideally not be reached if admin path logic is comprehensive
-  console.warn(`[Middleware] Path "${pathname}" is an admin path but did not match protected/public conditions. Allowing by default (review logic).`);
-  return NextResponse.next();
+  console.warn(`[Middleware] Path "${pathname}" (admin path) did not match conditions. Allowing by default (review logic).`);
+  return NextResponse.next({ request: { headers: requestHeaders } });
 }
 
 export const config = {
