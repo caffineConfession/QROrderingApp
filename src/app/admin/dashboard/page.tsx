@@ -8,6 +8,10 @@ import { ArrowRight, ShoppingBag, BarChart3, UserPlus } from "lucide-react";
 import { ADMIN_ROLES, type AdminRole } from "@/types";
 
 export default async function AdminDashboardPage() {
+  // Add a small delay to ensure the session cookie is available
+  await new Promise(resolve => setTimeout(resolve, 50));
+
+
   const sessionCookie = cookies().get("admin_session")?.value;
   const session = await decryptSession(sessionCookie);
   const userRole = session?.role as AdminRole | undefined;

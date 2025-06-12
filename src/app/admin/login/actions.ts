@@ -76,15 +76,35 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
     const sessionRole: AppAdminRole = adminUserRecord.role as unknown as AppAdminRole;
 
     const sessionPayload = {
-      userId: adminUserRecord.email,
-      email: sessionRole === ADMIN_ROLES.BUSINESS_MANAGER ? adminUserRecord.email : undefined,
+      userId: adminUserRecord.id, // Use user ID from database record
+      email: adminUserRecord.email, // Keep email in session for display/logging
       role: sessionRole,
     };
 
-    const session = await encrypt(sessionPayload);
-    console.log(`[LoginAction] Session created for user: "${lowercasedEmail}"`);
+    const sessionToken = await encrypt(sessionPayload);
+    console.log(`[LoginAction] Session token created for user: "${lowercasedEmail}"`);
 
-    (await cookies()).set("admin_session", session, { expires, httpOnly: true, secure: process.env.NODE_ENV === 'production', path: '/' });
+    const cookieOptions = {
+      name: "admin_session",
+      value: sessionToken,
+      expires,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      path: '/',
+      sameSite: 'lax' as const // Explicitly set SameSite, 'lax' is a good default
+    };
+
+    (await cookies()).set(cookieOptions);
+    console.log(`[LoginAction] Admin session cookie set with options:`, {
+        name: cookieOptions.name,
+        // value: '******', // Don't log token value
+        expires: cookieOptions.expires.toISOString(),
+        httpOnly: cookieOptions.httpOnly,
+        secure: cookieOptions.secure,
+        path: cookieOptions.path,
+        sameSite: cookieOptions.sameSite
+    });
+    console.log(`[LoginAction] Session payload for cookie:`, sessionPayload);
     return { success: true, role: sessionRole };
 
   } catch (error) {
