@@ -19,7 +19,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import LogoutButton from "./LogoutButton";
-import NavLink from "./NavLink"; // NavLink is now a client component handling its own path, IconName type also imported
+import NavLink, { type IconName } from "./NavLink"; 
 
 export const metadata: Metadata = {
   title: "Caffico Admin",
@@ -30,33 +30,11 @@ interface AdminLayoutProps {
   children: React.ReactNode;
 }
 
-// Helper function to check if current request matches a path
-// This is a simplified check. For more robust path checking, especially with dynamic routes, consider a library or more complex logic.
-function requestContainsPath(cookieStore: ReturnType<typeof cookies>, pathSegment: string): boolean {
-  const nextUrl = cookieStore.get('next-url'); // Next.js often sets this cookie with the current URL path
-  if (nextUrl?.value) {
-    try {
-      // Create a URL object to easily access pathname, robustly handling full URLs or just paths
-      const currentFullUrl = nextUrl.value.startsWith('/') ? `http://localhost${nextUrl.value}` : nextUrl.value;
-      const currentPath = new URL(currentFullUrl).pathname;
-      return currentPath === pathSegment;
-    } catch (e) {
-      // Fallback if nextUrl.value is not a valid path or URL fragment
-      return nextUrl.value === pathSegment;
-    }
-  }
-  return false;
-}
-
 export default async function AdminLayout({ children }: AdminLayoutProps) {
   let session: AdminSessionPayload | null = null;
   let sessionError: string | null = null;
   const cookieStore = cookies(); 
   
-  const isLoginPage = requestContainsPath(cookieStore, "/admin/login");
-  console.log(`[AdminLayout] Current request path check for /admin/login: ${isLoginPage}`);
-
-
   try {
     const sessionCookie = cookieStore.get("admin_session")?.value;
     console.log(`[AdminLayout] Admin session cookie value: ${sessionCookie ? '****** (present)' : 'not found'}`);
@@ -93,19 +71,20 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
     );
   }
   
-  // If trying to access a page that requires a session (anything but /admin/login), and no valid session
+  // If there's no valid session (userId AND role must be present)
+  // This means the user is not logged in, or the session is invalid/corrupted.
+  // In this case, we render a minimal layout. Middleware should handle redirection for protected pages.
+  // The Login page will be rendered as {children} within this minimal layout.
   if (!session?.userId || !session?.role) {
-    if (!isLoginPage) { // If not on login page and no session, middleware should have redirected.
-        console.log('[AdminLayout] No session or role found for a protected admin page. Children will be rendered; page should handle this (middleware should have redirected).');
-    } else { // On login page and no session (expected)
-        console.log('[AdminLayout] On login page and no session/role found (expected). Rendering minimal layout for login page.');
-    }
-    // For the login page itself, or if middleware somehow fails, render children in a minimal wrapper.
-    // The login page is responsible for its own layout if no session.
-    return <div className="flex min-h-screen flex-col">{children}</div>;
+    console.log('[AdminLayout] No valid session (userId or role missing). Rendering minimal layout for children (e.g., Login Page or error for protected page).');
+    return (
+      <div className="flex min-h-screen flex-col">
+        {children}
+      </div>
+    );
   }
   
-  // Cast session.role to AppAdminRole for NavLink prop
+  // If we reach here, the session is valid, and we render the full admin layout.
   const sessionRoleForNav = session.role as AppAdminRole;
   console.log(`[AdminLayout] Session role "${sessionRoleForNav}" found. Rendering full admin layout.`);
 
