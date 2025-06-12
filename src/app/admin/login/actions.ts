@@ -4,35 +4,37 @@
 import * as z from "zod";
 import { cookies } from "next/headers";
 import { SignJWT } from "jose";
-import type { AdminRole as AppAdminRole } from "@/types"; // Using AppAdminRole from types
+import type { AdminRole as AppAdminRole } from "@/types"; 
 import { ADMIN_ROLES } from "@/types";
 import prisma from "@/lib/prisma";
 import bcryptjs from "bcryptjs";
 import type { AdminRole as PrismaAdminRole } from "@prisma/client";
-
+import { redirect } from 'next/navigation'; // Added import for redirect
 
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string(),
 });
 
-// ResetPasswordSchemaInternal and ResetPasswordFormDataInternal are defined in page.tsx
-
-// Ensure JWT_SECRET_KEY is set in your environment variables
-const JWT_SECRET_KEY = process.env.JWT_SECRET_KEY;
-if (!JWT_SECRET_KEY || JWT_SECRET_KEY.trim() === "") {
-  throw new Error("JWT_SECRET_KEY is not set or is empty in environment variables. Please generate a strong secret key using 'openssl rand -base64 32' and set it in your .env file.");
-}
-
-const key = new TextEncoder().encode(JWT_SECRET_KEY);
 const SALT_ROUNDS = 10;
 const FIXED_CONFIRMATION_STRING = "Dhruv the great";
 
+async function getJwtSecretKey() {
+  const JWT_SECRET_KEY = process.env.JWT_SECRET_KEY;
+  if (!JWT_SECRET_KEY || JWT_SECRET_KEY.trim() === "") {
+    console.error("CRITICAL: JWT_SECRET_KEY is not set. This will cause errors.");
+    throw new Error("JWT_SECRET_KEY is not configured on the server.");
+  }
+  return JWT_SECRET_KEY;
+}
+
 async function encrypt(payload: any) {
+  const secret = await getJwtSecretKey();
+  const key = new TextEncoder().encode(secret);
   return new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setExpirationTime("1d") // Token expires in 1 day
+    .setExpirationTime("1d") 
     .sign(key);
 }
 
@@ -53,6 +55,11 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
 
 
   try {
+    if (!process.env.DATABASE_URL) {
+        console.error("[LoginAction] DATABASE_URL is not set.");
+        return { success: false, error: "Database connection is not configured." };
+    }
+
     const adminUserRecord = await prisma.adminUser.findUnique({
       where: { email: lowercasedEmail },
     });
@@ -72,12 +79,12 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
     }
     console.log(`[LoginAction] Password match successful for user: "${lowercasedEmail}"`);
 
-    const expires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 1 day
+    const expires = new Date(Date.now() + 24 * 60 * 60 * 1000); 
     const sessionRole: AppAdminRole = adminUserRecord.role as unknown as AppAdminRole;
 
     const sessionPayload = {
-      userId: adminUserRecord.id, // Use user ID from database record
-      email: adminUserRecord.email, // Keep email in session for display/logging
+      userId: adminUserRecord.id, 
+      email: adminUserRecord.email, 
       role: sessionRole,
     };
 
@@ -88,17 +95,16 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
       name: "admin_session",
       value: sessionToken,
       expires,
-      maxAge: 24 * 60 * 60, // 1 day in seconds
+      maxAge: 24 * 60 * 60, 
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       path: '/',
-      sameSite: 'lax' as const // Explicitly set SameSite, 'lax' is a good default
+      sameSite: 'lax' as const 
     };
 
-    (await cookies()).set(cookieOptions);
+    cookies().set(cookieOptions);
     console.log(`[LoginAction] Admin session cookie set with options:`, {
         name: cookieOptions.name,
-        // value: '******', // Don't log token value
         expires: cookieOptions.expires.toISOString(),
         httpOnly: cookieOptions.httpOnly,
         secure: cookieOptions.secure,
@@ -106,11 +112,16 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
         sameSite: cookieOptions.sameSite
     });
     console.log(`[LoginAction] Session payload for cookie:`, sessionPayload);
-    redirect("/admin/dashboard"); // Redirect on success
+    
+    redirect("/admin/dashboard"); 
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("[LoginAction] Error during login process:", error);
-    const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred."
+    // Check if it's a redirect error and re-throw it
+    if (error.message === 'NEXT_REDIRECT' || (error.digest && typeof error.digest === 'string' && error.digest.startsWith('NEXT_REDIRECT'))) {
+      throw error;
+    }
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred."
     return { success: false, error: `An unexpected error occurred during login: ${errorMessage}` };
   }
 }
@@ -129,6 +140,10 @@ export async function resetPasswordAction(credentials: any): Promise<{ success: 
   console.log(`[ResetPasswordAction] Attempting to find user for password reset. Input email: "${email}", Lowercased email for DB query: "${lowercasedEmail}"`);
 
   try {
+    if (!process.env.DATABASE_URL) {
+        console.error("[ResetPasswordAction] DATABASE_URL is not set.");
+        return { success: false, error: "Database connection is not configured." };
+    }
     const adminUserRecord = await prisma.adminUser.findUnique({
       where: { email: lowercasedEmail },
     });
@@ -150,8 +165,11 @@ export async function resetPasswordAction(credentials: any): Promise<{ success: 
 
     return { success: true, message: "Password has been reset successfully. You can now login with your new password." };
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("[ResetPasswordAction] Error during password reset:", error);
+     if (error.message === 'NEXT_REDIRECT' || (error.digest && typeof error.digest === 'string' && error.digest.startsWith('NEXT_REDIRECT'))) {
+      throw error;
+    }
     const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred."
     return { success: false, error: `An unexpected error occurred during password reset: ${errorMessage}` };
   }
@@ -159,6 +177,7 @@ export async function resetPasswordAction(credentials: any): Promise<{ success: 
 
 
 export async function logoutAction() {
-  (await cookies()).delete("admin_session");
+  cookies().delete("admin_session");
   console.log("[LogoutAction] Admin session cookie deleted.");
+  redirect("/admin/login");
 }
