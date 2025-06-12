@@ -4,17 +4,63 @@ import { cookies } from "next/headers";
 import { decryptSession } from "@/lib/session";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, ShoppingBag, BarChart3, UserPlus } from "lucide-react";
-import { ADMIN_ROLES, type AdminRole } from "@/types";
+import { ArrowRight, ShoppingBag, BarChart3, UserPlus, AlertCircle } from "lucide-react";
+import type { AdminRole, AdminSessionPayload } from "@/types";
+import { ADMIN_ROLES } from "@/types";
 
 export default async function AdminDashboardPage() {
-  // Add a small delay to ensure the session cookie is available
-  await new Promise(resolve => setTimeout(resolve, 50));
+  let session: AdminSessionPayload | null = null;
+  let sessionError: string | null = null;
 
+  try {
+    const sessionCookie = cookies().get("admin_session")?.value;
+    if (sessionCookie) {
+      session = await decryptSession(sessionCookie);
+    }
+  } catch (e: any) {
+    console.error("[AdminDashboardPage] Error decrypting session:", e.message, e.stack);
+    sessionError = e.message;
+  }
 
-  const sessionCookie = cookies().get("admin_session")?.value;
-  const session = await decryptSession(sessionCookie);
   const userRole = session?.role as AdminRole | undefined;
+
+  if (sessionError) {
+    return (
+      <Card className="shadow-lg rounded-xl">
+        <CardHeader className="text-center">
+           <AlertCircle className="mx-auto h-10 w-10 text-destructive mb-3" />
+          <CardTitle className="text-destructive">Dashboard Error</CardTitle>
+          <CardDescription>There was an issue loading your dashboard due to a session problem.</CardDescription>
+        </CardHeader>
+        <CardContent className="text-center">
+          <p className="text-sm text-destructive mb-4">Error details: {sessionError}</p>
+          <p className="text-sm text-muted-foreground mb-4">Please try logging out and logging back in. If the problem persists, contact an administrator.</p>
+          <Button asChild variant="outline">
+            <Link href="/admin/login">Go to Login Page</Link>
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+  
+  if (!session || !userRole) {
+    // This case should ideally be caught by middleware redirecting to login.
+    return (
+      <Card className="shadow-lg rounded-xl">
+        <CardHeader className="text-center">
+          <AlertCircle className="mx-auto h-10 w-10 text-amber-500 mb-3" />
+          <CardTitle className="flex items-center justify-center"><AlertCircle className="mr-2"/>Access Denied</CardTitle>
+          <CardDescription>You need to be logged in with appropriate permissions to view this page.</CardDescription>
+        </CardHeader>
+        <CardContent className="text-center">
+          <Button asChild>
+            <Link href="/admin/login">Go to Login Page</Link>
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
 
   return (
     <div className="space-y-6">
@@ -99,3 +145,5 @@ export default async function AdminDashboardPage() {
     </div>
   );
 }
+
+    

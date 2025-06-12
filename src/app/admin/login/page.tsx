@@ -62,18 +62,10 @@ export default function AdminLoginPage() {
           description: `Welcome! Redirecting to dashboard...`,
           variant: "default",
         });
-        // Add a small delay before redirecting
-        setTimeout(() => {
-          window.location.assign("/admin/dashboard");
-        }, 100); // 100ms delay
+        return; // Explicitly stop execution after successful login (server action handles redirect)
       } else {
-        toast({
-          title: "Login Failed",
-          description: result.error || "Invalid credentials. Please try again.",
-          variant: "destructive",
-        });
         setIsLoading(false); 
-      }
+
     } catch (error) {
       toast({
         title: "Login Error",
@@ -81,6 +73,7 @@ export default function AdminLoginPage() {
         variant: "destructive",
       });
       console.error("Login error:", error);
+    } finally {
       setIsLoading(false);
     }
   };

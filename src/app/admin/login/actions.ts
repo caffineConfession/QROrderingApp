@@ -7,7 +7,7 @@ import { SignJWT } from "jose";
 import type { AdminRole as AppAdminRole } from "@/types"; // Using AppAdminRole from types
 import { ADMIN_ROLES } from "@/types";
 import prisma from "@/lib/prisma";
-import bcryptjs from 'bcryptjs';
+import bcryptjs from "bcryptjs";
 import type { AdminRole as PrismaAdminRole } from "@prisma/client";
 
 
@@ -37,7 +37,7 @@ async function encrypt(payload: any) {
 }
 
 
-export async function loginAction(credentials: z.infer<typeof loginSchema>): Promise<{ success: boolean; role?: AppAdminRole; error?: string }> {
+export async function loginAction(credentials: z.infer<typeof loginSchema>): Promise<{ success: boolean; error?: string }> {
   console.log("[LoginAction] Started. Input credentials (password redacted):", { email: credentials.email, password: '***' });
 
   const parsedCredentials = loginSchema.safeParse(credentials);
@@ -45,7 +45,7 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
   if (!parsedCredentials.success) {
     console.error("[LoginAction] Validation failed:", parsedCredentials.error.issues);
     return { success: false, error: "Invalid input format for email or password." };
-  }
+  } 
 
   const { email, password } = parsedCredentials.data;
   const lowercasedEmail = email.toLowerCase();
@@ -88,6 +88,7 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
       name: "admin_session",
       value: sessionToken,
       expires,
+      maxAge: 24 * 60 * 60, // 1 day in seconds
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       path: '/',
@@ -105,7 +106,7 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
         sameSite: cookieOptions.sameSite
     });
     console.log(`[LoginAction] Session payload for cookie:`, sessionPayload);
-    return { success: true, role: sessionRole };
+    redirect("/admin/dashboard"); // Redirect on success
 
   } catch (error) {
     console.error("[LoginAction] Error during login process:", error);
