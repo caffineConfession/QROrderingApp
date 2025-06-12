@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { cookies } from "next/headers"; 
 import { decryptSession } from "@/lib/session";
-import type { AdminSessionPayload } from "@/types"; 
+import type { AdminSessionPayload, AdminRole as AppAdminRole } from "@/types"; // Ensure AdminRole is imported from types
 import { ADMIN_ROLES } from "@/types";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -30,14 +30,32 @@ interface AdminLayoutProps {
   children: React.ReactNode;
 }
 
+// Helper function to check if current request matches a path
+// This is a simplified check. For more robust path checking, especially with dynamic routes, consider a library or more complex logic.
+function requestContainsPath(cookieStore: ReturnType<typeof cookies>, pathSegment: string): boolean {
+  const nextUrl = cookieStore.get('next-url'); // Next.js often sets this cookie with the current URL path
+  if (nextUrl?.value) {
+    try {
+      // Create a URL object to easily access pathname, robustly handling full URLs or just paths
+      const currentFullUrl = nextUrl.value.startsWith('/') ? `http://localhost${nextUrl.value}` : nextUrl.value;
+      const currentPath = new URL(currentFullUrl).pathname;
+      return currentPath === pathSegment;
+    } catch (e) {
+      // Fallback if nextUrl.value is not a valid path or URL fragment
+      return nextUrl.value === pathSegment;
+    }
+  }
+  return false;
+}
+
 export default async function AdminLayout({ children }: AdminLayoutProps) {
   let session: AdminSessionPayload | null = null;
   let sessionError: string | null = null;
   const cookieStore = cookies(); 
-  const currentPath = cookieStore.get('next-url')?.value || "";
-  const isLoginPage = currentPath.endsWith("/admin/login");
+  
+  const isLoginPage = requestContainsPath(cookieStore, "/admin/login");
+  console.log(`[AdminLayout] Current request path check for /admin/login: ${isLoginPage}`);
 
-  console.log(`[AdminLayout] Request for path: ${currentPath}`);
 
   try {
     const sessionCookie = cookieStore.get("admin_session")?.value;
@@ -75,16 +93,21 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
     );
   }
   
+  // If trying to access a page that requires a session (anything but /admin/login), and no valid session
   if (!session?.userId || !session?.role) {
-    if (!isLoginPage) {
-        console.log('[AdminLayout] No session or role found for a protected admin page. Middleware should have redirected. Rendering children (page should handle this).');
-    } else {
-        console.log('[AdminLayout] On login page and no session/role found (expected). Rendering minimal layout.');
+    if (!isLoginPage) { // If not on login page and no session, middleware should have redirected.
+        console.log('[AdminLayout] No session or role found for a protected admin page. Children will be rendered; page should handle this (middleware should have redirected).');
+    } else { // On login page and no session (expected)
+        console.log('[AdminLayout] On login page and no session/role found (expected). Rendering minimal layout for login page.');
     }
+    // For the login page itself, or if middleware somehow fails, render children in a minimal wrapper.
+    // The login page is responsible for its own layout if no session.
     return <div className="flex min-h-screen flex-col">{children}</div>;
   }
   
-  console.log(`[AdminLayout] Session role "${session.role}" found. Rendering full admin layout for path: ${currentPath}`);
+  // Cast session.role to AppAdminRole for NavLink prop
+  const sessionRoleForNav = session.role as AppAdminRole;
+  console.log(`[AdminLayout] Session role "${sessionRoleForNav}" found. Rendering full admin layout.`);
 
   return (
     <div className="grid min-h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
@@ -98,12 +121,12 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
           </div>
           <div className="flex-1">
             <nav className="grid items-start px-2 text-sm font-medium lg:px-4">
-              <NavLink href="/admin/dashboard" iconName="Home" label="Dashboard" sessionRole={session.role}/>
-              <NavLink href="/admin/orders" iconName="ShoppingBag" label="Orders" roles={[ADMIN_ROLES.ORDER_PROCESSOR, ADMIN_ROLES.BUSINESS_MANAGER]} sessionRole={session.role}/>
-              <NavLink href="/admin/manual-order" iconName="Users" label="Manual Order" roles={[ADMIN_ROLES.MANUAL_ORDER_TAKER, ADMIN_ROLES.BUSINESS_MANAGER]} sessionRole={session.role}/>
-              <NavLink href="/admin/products" iconName="Package" label="Menu Management" roles={[ADMIN_ROLES.BUSINESS_MANAGER]} sessionRole={session.role}/>
-              <NavLink href="/admin/analytics" iconName="BarChart3" label="Analytics" roles={[ADMIN_ROLES.BUSINESS_MANAGER]} sessionRole={session.role}/>
-              <NavLink href="/admin/users" iconName="Settings" label="User Management" roles={[ADMIN_ROLES.BUSINESS_MANAGER]} sessionRole={session.role}/>
+              <NavLink href="/admin/dashboard" iconName="Home" label="Dashboard" sessionRole={sessionRoleForNav}/>
+              <NavLink href="/admin/orders" iconName="ShoppingBag" label="Orders" roles={[ADMIN_ROLES.ORDER_PROCESSOR, ADMIN_ROLES.BUSINESS_MANAGER]} sessionRole={sessionRoleForNav}/>
+              <NavLink href="/admin/manual-order" iconName="Users" label="Manual Order" roles={[ADMIN_ROLES.MANUAL_ORDER_TAKER, ADMIN_ROLES.BUSINESS_MANAGER]} sessionRole={sessionRoleForNav}/>
+              <NavLink href="/admin/products" iconName="Package" label="Menu Management" roles={[ADMIN_ROLES.BUSINESS_MANAGER]} sessionRole={sessionRoleForNav}/>
+              <NavLink href="/admin/analytics" iconName="BarChart3" label="Analytics" roles={[ADMIN_ROLES.BUSINESS_MANAGER]} sessionRole={sessionRoleForNav}/>
+              <NavLink href="/admin/users" iconName="Settings" label="User Management" roles={[ADMIN_ROLES.BUSINESS_MANAGER]} sessionRole={sessionRoleForNav}/>
             </nav>
           </div>
           <div className="mt-auto p-4 border-t">
@@ -147,4 +170,3 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
     </div>
   );
 }
-
