@@ -31,14 +31,14 @@ interface AdminLayoutProps {
 
 // Make AdminLayout an async function to use cookies() and headers()
 export default async function AdminLayout({ children }: AdminLayoutProps) {
+  // Call cookies() and headers() once at the top
+  const cookieStore = cookies(); 
+  const pageHeaders = headers(); 
+  
   let session: AdminSessionPayload | null = null;
   let sessionError: string | null = null;
 
-  // It's correct to call cookies() and headers() at the top of an async Server Component.
-  const cookieStore = await cookies();
-  const pageHeaders = await headers(); // Renamed to avoid conflict with imported headers
-
-  const pathnameFromHeaders = await pageHeaders.get('x-next-pathname') || await pageHeaders.get('next-url') || 'unknown_pathname_in_layout';
+  const pathnameFromHeaders = pageHeaders.get('x-next-pathname') || pageHeaders.get('next-url') || 'unknown_pathname_in_layout'; 
   console.log(`[AdminLayout] Rendering for actual pathname: ${pathnameFromHeaders}`);
   
   try {
@@ -75,11 +75,17 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
     );
   }
   
+  // This condition handles cases where the layout is rendered for a page that doesn't need a full sidebar,
+  // like the login page itself, or if session validation fails before middleware redirects.
   if (!session?.userId || !session?.role) {
-    console.log('[AdminLayout] No valid session (userId or role missing). Rendering minimal layout.');
+    // If it's the login page, it's fine to render minimal layout.
+    // If it's another admin page but session is invalid, middleware *should* have redirected.
+    // This block acts as a final safety net or for the login page itself.
+    console.log(`[AdminLayout] No valid session (userId or role missing for path: ${pathnameFromHeaders}). Rendering minimal layout.`);
     const childComponentType = (children as React.ReactElement)?.type as any;
     const childComponentName = childComponentType?.displayName || childComponentType?.name || 'UnknownComponent';
     console.log(`[AdminLayout Minimal] Children received: ${typeof children}, Component name: ${childComponentName}`);
+    
     return (
       <div className="flex min-h-screen flex-col">
         {children} 
@@ -88,7 +94,7 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
   }
   
   const sessionRoleForNav = session.role as AppAdminRole;
-  console.log(`[AdminLayout] Session role "${sessionRoleForNav}" found. Rendering full admin layout for user: ${session.email}`);
+  console.log(`[AdminLayout] Session role "${sessionRoleForNav}" found. Rendering full admin layout for user: ${session.email}, path: ${pathnameFromHeaders}`);
   const childComponentTypeFull = (children as React.ReactElement)?.type as any;
   const childComponentNameFull = childComponentTypeFull?.displayName || childComponentTypeFull?.name || 'UnknownComponent';
   console.log(`[AdminLayout Full] Children type received: ${typeof children}, Component name: ${childComponentNameFull}`);
@@ -148,8 +154,6 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
           </DropdownMenu>
         </header>
         <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6 bg-background">
-          {/* Using pathnameFromHeaders as key to help Next.js differentiate page content for re-renders,
-              though Next.js routing should inherently handle this. This is an extra measure. */}
           <div key={pathnameFromHeaders}> 
             {children}
           </div>

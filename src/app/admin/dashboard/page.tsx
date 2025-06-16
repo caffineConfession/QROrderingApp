@@ -1,3 +1,4 @@
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cookies } from "next/headers"; 
 import { decryptSession } from "@/lib/session";
@@ -7,14 +8,16 @@ import { ArrowRight, ShoppingBag, BarChart3, UserPlus, AlertCircle } from "lucid
 import type { AdminRole, AdminSessionPayload } from "@/types";
 import { ADMIN_ROLES } from "@/types";
 
+// Make AdminDashboardPage an async function
 export default async function AdminDashboardPage() {
   let session: AdminSessionPayload | null = null;
   let sessionError: string | null = null;
 
+  // Call cookies() once at the top
   const cookieStore = cookies(); 
 
   try {
-    const sessionCookie = await cookieStore.get("admin_session")?.value;
+    const sessionCookie = cookieStore.get("admin_session")?.value;
     if (sessionCookie) {
       session = await decryptSession(sessionCookie);
     }
@@ -46,6 +49,8 @@ export default async function AdminDashboardPage() {
   
   if (!session || !userRole) {
     console.warn("[AdminDashboardPage] Reached with no session or userRole. This is unexpected if middleware and layout are functioning correctly.");
+    // This case should ideally be handled by middleware redirecting to login.
+    // If it reaches here, it implies middleware might not have caught it, or it's an error state.
     return (
       <Card className="shadow-lg rounded-xl">
         <CardHeader className="text-center">
@@ -146,3 +151,4 @@ export default async function AdminDashboardPage() {
     </div>
   );
 }
+    
