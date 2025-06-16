@@ -11,6 +11,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { KeyRound, Mail, ShieldAlert, LockKeyhole, RefreshCw } from "lucide-react";
 import { useState, useEffect } from "react";
 import { loginAction, resetPasswordAction } from "./actions";
+import { ResetPasswordSchema, type ResetPasswordFormData } from "./schemas"; // Import from new schemas file
 import { useToast } from "@/hooks/use-toast";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -19,13 +20,6 @@ const loginSchema = z.object({
   password: z.string().min(1, { message: "Password is required." }),
 });
 type LoginFormSchema = z.infer<typeof loginSchema>;
-
-export const ResetPasswordSchema = z.object({
-  email: z.string().email({ message: "Please enter a valid email address." }),
-  confirmationString: z.string().min(1, { message: "Confirmation string is required." }),
-  newPassword: z.string().min(8, { message: "New password must be at least 8 characters long." }),
-});
-export type ResetPasswordFormData = z.infer<typeof ResetPasswordSchema>;
 
 export default function AdminLoginPage() {
   const { toast } = useToast();
@@ -42,6 +36,7 @@ export default function AdminLoginPage() {
         description: decodeURIComponent(errorParam),
         variant: "destructive",
       });
+      // Clear the error from URL to prevent re-toasting on refresh
       router.replace('/admin/login', { scroll: false }); 
     }
   }, [searchParams, toast, router]);
@@ -67,9 +62,11 @@ export default function AdminLoginPage() {
     setIsLoading(true);
     try {
       console.log("[Client Login] Submitting login data for:", data.email);
+      // Server action `loginAction` will handle redirect on success by throwing NEXT_REDIRECT
+      // or return an error object on failure.
       const result = await loginAction(data); 
 
-      // If loginAction returns (i.e., doesn't redirect), it means an error occurred.
+      // If loginAction returns, it means an error occurred (redirect did not happen)
       if (result && result.error) {
         toast({
           title: "Login Failed",
@@ -83,24 +80,19 @@ export default function AdminLoginPage() {
           variant: "destructive",
         });
       }
-      // If loginAction successfully redirects, this part of the code (after await) 
-      // will likely not be reached, or the component might unmount.
-      // No explicit client-side redirect is needed here as the server action handles it.
+      // No client-side redirect here if server action handles it.
 
     } catch (error: any) {
       // This catch block is primarily for network errors or if loginAction throws
       // an error that is *not* NEXT_REDIRECT.
       console.error("[Client Login] Error during login submission process:", error);
       
-      // Check if the error is the specific NEXT_REDIRECT error thrown by Next.js
-      // when redirect() is called from a server action.
       const isNextRedirectError = typeof error.digest === 'string' && error.digest.includes('NEXT_REDIRECT');
 
       if (isNextRedirectError) {
         // This is an expected internal error when redirect() is called from a server action.
         // Next.js handles this by performing the redirect. No user-facing toast is needed.
         console.log("[Client Login] NEXT_REDIRECT caught. Server is handling redirection.");
-        // setIsLoading(false) will be called in finally, but the page should be redirecting away.
       } else {
         // For any other unexpected errors:
         toast({
@@ -110,9 +102,6 @@ export default function AdminLoginPage() {
         });
       }
     } finally {
-      // It's generally safe to call setIsLoading(false) here. 
-      // If a redirect is in progress, the component might unmount before this is problematic.
-      // If the redirect fails or an error occurs, the button needs to be re-enabled.
       setIsLoading(false);
     }
   };
@@ -125,7 +114,7 @@ export default function AdminLoginPage() {
         toast({
           title: "Password Reset Successful",
           description: result.message || "You can now login with your new password.",
-          variant: "default",
+          variant: "default", // Changed to default for success
         });
         resetPasswordForm.reset();
         setShowResetForm(false);
@@ -139,7 +128,7 @@ export default function AdminLoginPage() {
     } catch (error: any) { 
       console.error("[Client ResetPassword] Error during password reset submission:", error);
       toast({
-        title: "Password Reset SystemError",
+        title: "Password Reset System Error",
         description: error.message || "An unexpected error occurred. Please try again later.",
         variant: "destructive",
       });

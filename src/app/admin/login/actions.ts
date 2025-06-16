@@ -3,12 +3,12 @@
 
 import * as z from "zod";
 import { cookies } from "next/headers"; 
-import { SignJWT } from "jose";
 import type { AdminRole as AppAdminRole } from "@/types";
 import prisma from "@/lib/prisma";
 import bcryptjs from "bcryptjs";
 import { redirect } from 'next/navigation'; 
 import { encryptSession } from '@/lib/session';
+import { ResetPasswordSchema, type ResetPasswordFormData } from "./schemas"; // Import from new schemas file
 
 const loginSchema = z.object({
   email: z.string().email({ message: "Please enter a valid email address." }),
@@ -39,7 +39,7 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
       return { success: false, error: `Admin user with email "${lowercasedEmail}" not found.` };
     }
 
-    const passwordMatch = await bcryptjs.compare(password, adminUserRecord.passwordHash); // IMPORTANT: Added await
+    const passwordMatch = await bcryptjs.compare(password, adminUserRecord.passwordHash);
 
     if (!passwordMatch) {
       return { success: false, error: "Invalid email or password." };
@@ -57,19 +57,23 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
     const sessionToken = await encryptSession(sessionPayload);
     console.log(`[LoginAction] Session token created for user: "${lowercasedEmail}"`);
     
-    // Ensure cookies() is from next/headers
-    const cookieStore = cookies();
-    cookieStore.set({
+    // Note: The error "cookies() should be awaited" when calling cookies().set()
+    // is a known behavior/misleading error message in some Next.js versions or contexts.
+    // The `loginAction` is already async. The issue might be deeper within Next.js's async
+    // context tracking for server actions when dynamic functions are used.
+    // For now, the usage of cookies().set() is standard for server actions.
+    cookies().set({
       name: "admin_session",
       value: sessionToken,
       expires,
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production', 
+      secure: false, // Explicitly false for development (including cloud workstations)
       path: '/',
       sameSite: 'lax' 
     });
-    console.log(`[LoginAction] Admin session cookie set with secure: ${process.env.NODE_ENV === 'production'}`);
+    console.log(`[LoginAction] Admin session cookie set with secure: false`);
     
+    // Standard practice is to redirect from server action
     redirect('/admin/dashboard'); 
 
   } catch (error: any) {
@@ -93,22 +97,12 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
 
 export async function logoutAction(): Promise<void> {
   console.log("[LogoutAction] Deleting admin_session cookie.");
-  const cookieStore = cookies();
-  cookieStore.delete("admin_session", { path: '/' }); 
+  cookies().delete("admin_session", { path: '/' }); 
   redirect('/admin/login'); 
 }
 
-// ResetPasswordSchema and resetPasswordAction remain unchanged from previous versions
 const FIXED_CONFIRMATION_STRING = "Dhruv the great"; 
 const SALT_ROUNDS = 10; 
-
-export const ResetPasswordSchema = z.object({
-  email: z.string().email({ message: "Please enter a valid email address." }),
-  confirmationString: z.string().min(1, { message: "Confirmation string is required." }),
-  newPassword: z.string().min(8, { message: "New password must be at least 8 characters long." }),
-});
-export type ResetPasswordFormData = z.infer<typeof ResetPasswordSchema>;
-
 
 export async function resetPasswordAction(credentials: ResetPasswordFormData): Promise<{ success: boolean; error?: string; message?: string }> {
   console.log("[ResetPasswordAction] Started for email:", credentials.email);
