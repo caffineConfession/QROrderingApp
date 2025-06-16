@@ -33,14 +33,14 @@ interface AdminLayoutProps {
 export default async function AdminLayout({ children }: AdminLayoutProps) {
   let session: AdminSessionPayload | null = null;
   let sessionError: string | null = null;
-  
-  // It's correct to call cookies() and headers() at the top of an async Server Component.
-  const cookieStore = cookies(); 
-  const pageHeaders = headers(); // Renamed to avoid conflict with imported headers
-  
-  const pathnameFromHeaders = pageHeaders.get('x-next-pathname') || pageHeaders.get('next-url') || 'unknown_pathname_in_layout'; 
-  console.log(`[AdminLayout] Rendering for actual pathname: ${pathnameFromHeaders}`);
 
+  // It's correct to call cookies() and headers() at the top of an async Server Component.
+  const cookieStore = await cookies();
+  const pageHeaders = await headers(); // Renamed to avoid conflict with imported headers
+
+  const pathnameFromHeaders = await pageHeaders.get('x-next-pathname') || await pageHeaders.get('next-url') || 'unknown_pathname_in_layout';
+  console.log(`[AdminLayout] Rendering for actual pathname: ${pathnameFromHeaders}`);
+  
   try {
     const sessionCookie = cookieStore.get("admin_session")?.value;
     console.log(`[AdminLayout] Admin session cookie value from cookieStore: ${sessionCookie ? `'${sessionCookie.substring(0,20)}...'` : 'not found'}`);

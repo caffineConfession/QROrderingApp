@@ -10,8 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { KeyRound, Mail, ShieldAlert, LockKeyhole, RefreshCw } from "lucide-react";
 import { useState, useEffect } from "react";
-import { loginAction, resetPasswordAction } from "./actions";
-import { ResetPasswordSchema, type ResetPasswordFormData } from "./schemas"; // Import from new schemas file
+import { loginAction, resetPasswordAction, logoutAction } from "./actions"; // Added logoutAction
+import { ResetPasswordSchema, type ResetPasswordFormData } from "./schemas"; 
 import { useToast } from "@/hooks/use-toast";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -23,7 +23,7 @@ type LoginFormSchema = z.infer<typeof loginSchema>;
 
 export default function AdminLoginPage() {
   const { toast } = useToast();
-  const router = useRouter();
+  const router = useRouter(); // Keep for other potential uses or if login error needs specific client routing
   const searchParams = useSearchParams();
   const [isLoading, setIsLoading] = useState(false);
   const [showResetForm, setShowResetForm] = useState(false);
@@ -36,10 +36,11 @@ export default function AdminLoginPage() {
         description: decodeURIComponent(errorParam),
         variant: "destructive",
       });
-      // Clear the error from URL to prevent re-toasting on refresh
-      router.replace('/admin/login', { scroll: false }); 
+      // Clear the error from URL to prevent re-toasting on refresh by replacing the current history state
+      const currentPath = window.location.pathname;
+      window.history.replaceState(null, '', currentPath);
     }
-  }, [searchParams, toast, router]);
+  }, [searchParams, toast]);
 
   const loginForm = useForm<LoginFormSchema>({
     resolver: zodResolver(loginSchema),
@@ -62,48 +63,42 @@ export default function AdminLoginPage() {
     setIsLoading(true);
     try {
       console.log("[Client Login] Submitting login data for:", data.email);
-      // Server action `loginAction` will handle redirect on success by throwing NEXT_REDIRECT
-      // or return an error object on failure.
       const result = await loginAction(data); 
 
-      // If loginAction returns, it means an error occurred (redirect did not happen)
-      if (result && result.error) {
+      if (result && result.success) {
+        toast({
+          title: "Login Successful!",
+          description: "Redirecting to your dashboard...",
+        });
+        // Use window.location.href for a full page load to ensure cookie is sent with the new request
+        window.location.href = "/admin/dashboard";
+      } else if (result && result.error) {
         toast({
           title: "Login Failed",
           description: result.error,
           variant: "destructive",
         });
-      } else if (result && !result.success) {
+        setIsLoading(false); // Only stop loading if there's an error and no redirect
+      } else {
          toast({
           title: "Login Failed",
           description: "An unknown issue occurred during login.",
           variant: "destructive",
         });
+        setIsLoading(false); // Only stop loading if there's an error and no redirect
       }
-      // No client-side redirect here if server action handles it.
-
     } catch (error: any) {
-      // This catch block is primarily for network errors or if loginAction throws
-      // an error that is *not* NEXT_REDIRECT.
+      // This catch block is now less likely to catch NEXT_REDIRECT as it's removed from server action
+      // It would primarily be for network errors or unexpected exceptions from loginAction itself.
       console.error("[Client Login] Error during login submission process:", error);
-      
-      const isNextRedirectError = typeof error.digest === 'string' && error.digest.includes('NEXT_REDIRECT');
-
-      if (isNextRedirectError) {
-        // This is an expected internal error when redirect() is called from a server action.
-        // Next.js handles this by performing the redirect. No user-facing toast is needed.
-        console.log("[Client Login] NEXT_REDIRECT caught. Server is handling redirection.");
-      } else {
-        // For any other unexpected errors:
-        toast({
-          title: "Login System Error",
-          description: `An unexpected error occurred: ${error.message || "Please try again."}`,
-          variant: "destructive",
-        });
-      }
-    } finally {
+      toast({
+        title: "Login System Error",
+        description: `An unexpected error occurred: ${error.message || "Please try again."}`,
+        variant: "destructive",
+      });
       setIsLoading(false);
     }
+    // No setIsLoading(false) here if successful, as page will navigate away.
   };
 
   const onResetPasswordSubmit: SubmitHandler<ResetPasswordFormData> = async (data) => {
@@ -114,7 +109,7 @@ export default function AdminLoginPage() {
         toast({
           title: "Password Reset Successful",
           description: result.message || "You can now login with your new password.",
-          variant: "default", // Changed to default for success
+          variant: "default", 
         });
         resetPasswordForm.reset();
         setShowResetForm(false);
@@ -136,6 +131,14 @@ export default function AdminLoginPage() {
       setIsLoading(false);
     }
   };
+  
+  // This component doesn't need to call logoutAction itself usually,
+  // as the LogoutButton in AdminLayout handles it.
+  // If a direct logout from login page was needed, it would be:
+  // const handleDirectLogout = async () => {
+  //   await logoutAction();
+  //   window.location.href = "/admin/login"; // Or router.push if preferred after logout
+  // };
 
   return (
     <div className="flex flex-grow items-center justify-center bg-muted/40 p-4">

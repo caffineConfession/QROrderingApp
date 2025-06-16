@@ -1,4 +1,3 @@
-
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cookies } from "next/headers"; 
 import { decryptSession } from "@/lib/session";
@@ -8,16 +7,14 @@ import { ArrowRight, ShoppingBag, BarChart3, UserPlus, AlertCircle } from "lucid
 import type { AdminRole, AdminSessionPayload } from "@/types";
 import { ADMIN_ROLES } from "@/types";
 
-// Make AdminDashboardPage an async function
 export default async function AdminDashboardPage() {
   let session: AdminSessionPayload | null = null;
   let sessionError: string | null = null;
 
-  // Correctly call cookies() within an async Server Component
   const cookieStore = cookies(); 
 
   try {
-    const sessionCookie = cookieStore.get("admin_session")?.value;
+    const sessionCookie = await cookieStore.get("admin_session")?.value;
     if (sessionCookie) {
       session = await decryptSession(sessionCookie);
     }
@@ -32,7 +29,7 @@ export default async function AdminDashboardPage() {
     return (
       <Card className="shadow-lg rounded-xl">
         <CardHeader className="text-center">
-           <AlertCircle className="mx-auto h-10 w-10 text-destructive mb-3" />
+          <AlertCircle className="mx-auto h-10 w-10 text-destructive mb-3" />
           <CardTitle className="text-destructive">Dashboard Error</CardTitle>
           <CardDescription>There was an issue loading your dashboard due to a session problem.</CardDescription>
         </CardHeader>
@@ -49,9 +46,6 @@ export default async function AdminDashboardPage() {
   
   if (!session || !userRole) {
     console.warn("[AdminDashboardPage] Reached with no session or userRole. This is unexpected if middleware and layout are functioning correctly.");
-    // This case should ideally be fully handled by middleware redirecting to login,
-    // or AdminLayout rendering its minimal version which would host AdminLoginPage.
-    // Displaying a specific error here can be helpful for debugging if middleware somehow lets it through.
     return (
       <Card className="shadow-lg rounded-xl">
         <CardHeader className="text-center">
@@ -141,15 +135,14 @@ export default async function AdminDashboardPage() {
           </Card>
         }
       </div>
-       {(!userRole || (userRole !== ADMIN_ROLES.ORDER_PROCESSOR && userRole !== ADMIN_ROLES.BUSINESS_MANAGER && userRole !== ADMIN_ROLES.MANUAL_ORDER_TAKER)) && (
-          <Card>
-            <CardContent className="pt-6">
-              <p className="text-muted-foreground">You do not have access to specific modules. Please contact an administrator if you believe this is an error.</p>
-            </CardContent>
-          </Card>
-        )}
+      
+      {(!userRole || (userRole !== ADMIN_ROLES.ORDER_PROCESSOR && userRole !== ADMIN_ROLES.BUSINESS_MANAGER && userRole !== ADMIN_ROLES.MANUAL_ORDER_TAKER)) && (
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-muted-foreground">You do not have access to specific modules. Please contact an administrator if you believe this is an error.</p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
-
-    
