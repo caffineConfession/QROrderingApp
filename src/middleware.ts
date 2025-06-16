@@ -7,86 +7,106 @@ const ADMIN_LOGIN_PATH = '/admin/login';
 const ADMIN_DASHBOARD_PATH = '/admin/dashboard';
 const ADMIN_BASE_PATH = '/admin';
 
-const PUBLIC_ADMIN_PATHS = [ADMIN_LOGIN_PATH];
+// Only /admin/login is public within the /admin/* space
+// All other /admin/* paths require authentication.
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const requestHeaders = new Headers(request.headers);
-  requestHeaders.set('x-next-pathname', pathname); // Make pathname available to Server Components via headers
+  // Pass the actual pathname to Server Components (like AdminLayout)
+  // It's more reliable than trying to infer from cookies or other means in Server Components.
+  requestHeaders.set('x-next-pathname', pathname);
 
-  console.log(`[Middleware] Request for path: ${pathname}`);
+  console.log(`[Middleware] Executing for path: ${pathname}`);
 
+  // If the path is not an admin path, pass through without admin session logic.
   if (!pathname.startsWith(ADMIN_BASE_PATH)) {
+    console.log(`[Middleware] Path "${pathname}" is not an admin path. Allowing.`);
     return NextResponse.next({ request: { headers: requestHeaders } });
   }
 
   const sessionCookieValue = request.cookies.get('admin_session')?.value;
-  console.log(`[Middleware] Path: ${pathname}. admin_session cookie value: '${sessionCookieValue || 'not found'}'`);
+  const displayableToken = sessionCookieValue ? `${sessionCookieValue.substring(0, 15)}...` : 'not found';
+  console.log(`[Middleware] Path: "${pathname}". Admin session cookie from request.cookies: '${displayableToken}'`);
 
   let session = null;
   if (sessionCookieValue) {
     try {
+      // decryptSession in src/lib/session.ts has detailed logging for success/failure
       session = await decryptSession(sessionCookieValue);
-      console.log(`[Middleware] Path: ${pathname}. Decrypted session:`, session ? JSON.stringify(session) : 'null');
+      if (session) {
+        console.log(`[Middleware] Path: "${pathname}". Session decrypted successfully. UserID: ${session.userId}, Role: ${session.role}`);
+      } else {
+        // This case implies decryptSession returned null (e.g., token expired, signature failed, etc.)
+        console.log(`[Middleware] Path: "${pathname}". decryptSession returned null, indicating invalid token.`);
+      }
     } catch (e: any) {
-      console.error(`[Middleware] Path: ${pathname}. Error decrypting session:`, e.message);
-      const loginUrl = new URL(ADMIN_LOGIN_PATH, request.url);
-      loginUrl.searchParams.set('error', 'Invalid session. Please login again.');
-      const response = NextResponse.redirect(loginUrl);
-      response.cookies.delete('admin_session', { path: '/' }); // Ensure cookie is cleared
-      return response;
+      // This catch is for truly unexpected errors *during* the decryptSession call itself,
+      // though decryptSession is designed to handle its own JWT-related errors and return null.
+      console.error(`[Middleware] Path: "${pathname}". CRITICAL UNEXPECTED error during decryptSession call:`, e.message);
+      // It's safer to assume the session is invalid and redirect.
+      session = null; // Ensure session is treated as invalid.
     }
   } else {
-    console.log(`[Middleware] Path: ${pathname}. No session cookie found.`);
+    console.log(`[Middleware] Path: "${pathname}". No admin_session cookie found.`);
   }
 
-  // Protected admin page
-  if (!PUBLIC_ADMIN_PATHS.includes(pathname)) {
-    if (!session?.userId || !session?.role) {
-      console.log(`[Middleware] Path "${pathname}" is PROTECTED. Session invalid or role/userId missing. Redirecting to login.`);
-      const loginUrl = new URL(ADMIN_LOGIN_PATH, request.url);
-      loginUrl.searchParams.set('error', 'Session expired or invalid. Please login again.');
-      return NextResponse.redirect(loginUrl);
+  // Handling the /admin/login page
+  if (pathname === ADMIN_LOGIN_PATH) {
+    if (session?.userId && session?.role) {
+      console.log(`[Middleware] Path is ADMIN_LOGIN_PATH but a valid session exists. Redirecting to dashboard: ${ADMIN_DASHBOARD_PATH}`);
+      const dashboardResponse = NextResponse.redirect(new URL(ADMIN_DASHBOARD_PATH, request.url));
+      dashboardResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      dashboardResponse.headers.set('Pragma', 'no-cache');
+      dashboardResponse.headers.set('Expires', '0');
+      return dashboardResponse;
     }
-    console.log(`[Middleware] Path "${pathname}" is PROTECTED. Session valid. Allowing access.`);
-    const response = NextResponse.next({ request: { headers: requestHeaders } });
-    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    response.headers.set('Pragma', 'no-cache');
-    response.headers.set('Expires', '0');
-    return response;
+    // If on /admin/login and no valid session, allow access.
+    console.log(`[Middleware] Path is ADMIN_LOGIN_PATH. No valid session or already on login. Allowing access.`);
+    const loginResponse = NextResponse.next({ request: { headers: requestHeaders } });
+    loginResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    loginResponse.headers.set('Pragma', 'no-cache');
+    loginResponse.headers.set('Expires', '0');
+    return loginResponse;
   }
 
-  // Public admin page (e.g., /admin/login)
-  if (PUBLIC_ADMIN_PATHS.includes(pathname)) {
-    if (pathname === ADMIN_LOGIN_PATH && session?.userId && session?.role) {
-      console.log(`[Middleware] Path is ADMIN_LOGIN_PATH. Session is VALID. Redirecting to dashboard.`);
-      const dashboardUrl = new URL(ADMIN_DASHBOARD_PATH, request.url);
-      const response = NextResponse.redirect(dashboardUrl);
-      // Add cache control to redirect response as well
-      response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-      response.headers.set('Pragma', 'no-cache');
-      response.headers.set('Expires', '0');
-      return response;
+  // For all other /admin/* paths (which are protected)
+  if (!session?.userId || !session?.role) {
+    console.log(`[Middleware] Path "${pathname}" is PROTECTED. Session is invalid or user/role missing. Redirecting to login.`);
+    const loginUrl = new URL(ADMIN_LOGIN_PATH, request.url);
+    let errorMessage = 'Session expired or invalid. Please login again.';
+    if (!sessionCookieValue) {
+        errorMessage = 'You are not logged in. Please login.';
     }
-    console.log(`[Middleware] Path "${pathname}" is PUBLIC admin path. Allowing access.`);
-    return NextResponse.next({ request: { headers: requestHeaders } });
+    loginUrl.searchParams.set('error', errorMessage);
+    
+    const redirectResponse = NextResponse.redirect(loginUrl);
+    // If there was a cookie but decryption failed (session is null), clear the bad cookie.
+    if (sessionCookieValue && !session) {
+        console.log(`[Middleware] Clearing potentially invalid admin_session cookie for path "${pathname}" due to decryption failure.`);
+        redirectResponse.cookies.delete('admin_session', { path: '/' });
+    }
+    redirectResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    redirectResponse.headers.set('Pragma', 'no-cache');
+    redirectResponse.headers.set('Expires', '0');
+    return redirectResponse;
   }
 
-  console.warn(`[Middleware] Path "${pathname}" (admin path) did not match conditions. Allowing by default (review logic).`);
-  return NextResponse.next({ request: { headers: requestHeaders } });
+  // If session is valid and it's a protected admin path (e.g., /admin/dashboard, /admin/orders)
+  console.log(`[Middleware] Path "${pathname}" is PROTECTED. Session valid. Allowing access.`);
+  const protectedResponse = NextResponse.next({ request: { headers: requestHeaders } });
+  protectedResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  protectedResponse.headers.set('Pragma', 'no-cache');
+  protectedResponse.headers.set('Expires', '0');
+  return protectedResponse;
 }
 
 export const config = {
   matcher: [
     /*
-     * Match all request paths except for the ones starting with:
-     * - api (API routes)
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - assets (custom static assets folder if you have one)
-     * - images (custom static images folder if you have one)
+     * Match all request paths starting with /admin.
+     * This includes /admin, /admin/login, /admin/dashboard, /admin/orders, etc.
      */
-    '/((?!api|_next/static|_next/image|favicon.ico|assets|images).*)',
+    '/admin/:path*',
   ],
-}
+};
