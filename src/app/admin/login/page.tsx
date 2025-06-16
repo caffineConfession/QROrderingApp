@@ -13,7 +13,7 @@ import { useState, useEffect } from "react";
 import { loginAction, resetPasswordAction } from "./actions";
 import { ResetPasswordSchema, type ResetPasswordFormData } from "./schemas";
 import { useToast } from "@/hooks/use-toast";
-import { useSearchParams } from "next/navigation"; // useRouter removed as redirect is client-side
+import { useSearchParams } from "next/navigation";
 
 const loginSchema = z.object({
   email: z.string().email({ message: "Please enter a valid email address." }),
@@ -35,6 +35,7 @@ export default function AdminLoginPage() {
         description: decodeURIComponent(errorParam),
         variant: "destructive",
       });
+      // Clear the error from URL to prevent re-showing on refresh
       const currentPath = window.location.pathname;
       window.history.replaceState(null, '', currentPath);
     }
@@ -60,36 +61,45 @@ export default function AdminLoginPage() {
   const onLoginSubmit: SubmitHandler<LoginFormSchema> = async (data) => {
     setIsLoading(true);
     try {
-      console.log("[Client Login] Submitting login data for:", data.email);
-      const result = await loginAction(data);
+      // 1. Call loginAction to authenticate and get session token
+      const authResult = await loginAction(data);
 
-      if (result && result.success) {
-        toast({
-          title: "Login Successful!",
-          description: "Redirecting to your dashboard...",
+      if (authResult.success && authResult.sessionToken) {
+        // 2. Call API route to set the cookie
+        const setCookieResponse = await fetch('/api/auth/set-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionToken: authResult.sessionToken }),
         });
-        // Add a small delay before redirecting to allow cookie to settle, if needed
-        setTimeout(() => {
+
+        const setCookieResult = await setCookieResponse.json();
+
+        if (setCookieResponse.ok && setCookieResult.success) {
+          toast({
+            title: "Login Successful!",
+            description: "Redirecting to your dashboard...",
+          });
+          // Add a small delay for cookie to settle if needed, then redirect
+          setTimeout(() => {
             window.location.href = "/admin/dashboard";
-        }, 100); // 100ms delay, can be adjusted or removed
-      } else if (result && result.error) {
+          }, 100); // 100ms delay
+        } else {
+          toast({
+            title: "Login Failed",
+            description: setCookieResult.error || "Could not set session. Please try again.",
+            variant: "destructive",
+          });
+          setIsLoading(false);
+        }
+      } else {
         toast({
           title: "Login Failed",
-          description: result.error,
-          variant: "destructive",
-        });
-        setIsLoading(false);
-      } else {
-         toast({
-          title: "Login Failed",
-          description: "An unknown issue occurred during login.",
+          description: authResult.error || "Invalid credentials or server error.",
           variant: "destructive",
         });
         setIsLoading(false);
       }
     } catch (error: any) {
-      // This catch block is for unexpected errors from loginAction itself,
-      // not for NEXT_REDIRECT which is no longer thrown by loginAction.
       console.error("[Client Login] Error during login submission process:", error);
       toast({
         title: "Login System Error",
@@ -98,8 +108,7 @@ export default function AdminLoginPage() {
       });
       setIsLoading(false);
     }
-    // setIsLoading(false) is handled inside conditions now.
-    // If successful, page navigates away, so no need to set isLoading to false.
+    // setIsLoading(false) is handled within conditions; successful login navigates away.
   };
 
   const onResetPasswordSubmit: SubmitHandler<ResetPasswordFormData> = async (data) => {
@@ -251,3 +260,4 @@ export default function AdminLoginPage() {
     </div>
   );
 }
+
