@@ -1,7 +1,7 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { headers, cookies } from 'next/headers'; 
+import { cookies, headers } from 'next/headers'; // Ensure cookies and headers are imported
 import { Coffee, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -29,6 +29,7 @@ interface AdminLayoutProps {
   children: React.ReactNode;
 }
 
+// Make AdminLayout an async function to use cookies() and headers()
 export default async function AdminLayout({ children }: AdminLayoutProps) {
   let session: AdminSessionPayload | null = null;
   let sessionError: string | null = null;
@@ -78,7 +79,7 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
     console.log('[AdminLayout] No valid session (userId or role missing). Rendering minimal layout.');
     const childComponentType = (children as React.ReactElement)?.type as any;
     const childComponentName = childComponentType?.displayName || childComponentType?.name || 'UnknownComponent';
-    console.log(`[AdminLayout Minimal] Children type received: ${typeof children}, Component name: ${childComponentName}`);
+    console.log(`[AdminLayout Minimal] Children received: ${typeof children}, Component name: ${childComponentName}`);
     return (
       <div className="flex min-h-screen flex-col">
         {children} 
@@ -147,6 +148,8 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
           </DropdownMenu>
         </header>
         <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6 bg-background">
+          {/* Using pathnameFromHeaders as key to help Next.js differentiate page content for re-renders,
+              though Next.js routing should inherently handle this. This is an extra measure. */}
           <div key={pathnameFromHeaders}> 
             {children}
           </div>

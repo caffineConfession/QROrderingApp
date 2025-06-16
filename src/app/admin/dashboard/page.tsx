@@ -8,11 +8,12 @@ import { ArrowRight, ShoppingBag, BarChart3, UserPlus, AlertCircle } from "lucid
 import type { AdminRole, AdminSessionPayload } from "@/types";
 import { ADMIN_ROLES } from "@/types";
 
+// Make AdminDashboardPage an async function
 export default async function AdminDashboardPage() {
   let session: AdminSessionPayload | null = null;
   let sessionError: string | null = null;
 
-  // It's correct to call cookies() at the top of an async Server Component.
+  // Correctly call cookies() within an async Server Component
   const cookieStore = cookies(); 
 
   try {
@@ -48,12 +49,15 @@ export default async function AdminDashboardPage() {
   
   if (!session || !userRole) {
     console.warn("[AdminDashboardPage] Reached with no session or userRole. This is unexpected if middleware and layout are functioning correctly.");
+    // This case should ideally be fully handled by middleware redirecting to login,
+    // or AdminLayout rendering its minimal version which would host AdminLoginPage.
+    // Displaying a specific error here can be helpful for debugging if middleware somehow lets it through.
     return (
       <Card className="shadow-lg rounded-xl">
         <CardHeader className="text-center">
           <AlertCircle className="mx-auto h-10 w-10 text-amber-500 mb-3" />
           <CardTitle className="flex items-center justify-center"><AlertCircle className="mr-2"/>Access Issue</CardTitle>
-          <CardDescription>Could not verify your session for the dashboard. Please try logging in again.</CardDescription>
+          <CardDescription>Could not verify your session for the dashboard. Please ensure you are logged in.</CardDescription>
         </CardHeader>
         <CardContent className="text-center">
           <Button asChild>

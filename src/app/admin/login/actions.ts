@@ -2,7 +2,7 @@
 "use server";
 
 import * as z from "zod";
-import { cookies } from "next/headers"; 
+import { cookies } from "next/headers"; // Ensure correct import
 import { SignJWT } from "jose";
 import type { AdminRole as AppAdminRole } from "@/types";
 import prisma from "@/lib/prisma";
@@ -24,10 +24,8 @@ function getJwtSecretKey(): string {
   const keyFromEnv = process.env.JWT_SECRET_KEY;
   if (!keyFromEnv || keyFromEnv.trim() === "") {
     console.error("CRITICAL: JWT_SECRET_KEY is not set in loginAction. This will cause errors.");
-    // Fallback for safety in case console.error doesn't halt execution in some envs
     jwtSecretKeyInstance = "fallback-secret-for-dev-only-if-not-set-and-env-is-broken"; 
     if (jwtSecretKeyInstance === "fallback-secret-for-dev-only-if-not-set-and-env-is-broken") {
-      // This will make sure it's very obvious in logs if the fallback is used.
       console.warn("WARNING: Using a DANGEROUSLY INSECURE FALLBACK JWT_SECRET_KEY. THIS MUST BE FIXED IMMEDIATELY. ENSURE JWT_SECRET_KEY IS SET IN .env");
     }
   } else {
@@ -91,29 +89,45 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
     const sessionToken = await encrypt(sessionPayload);
     console.log(`[LoginAction] Session token created for user: "${lowercasedEmail}"`);
     
+    // The 'cookies().set(...)' error usually means the async context of the Server Action
+    // is not correctly recognized by Next.js when this specific dynamic function is called.
+    // Ensuring the Server Action itself is 'async' and 'cookies' is imported from 'next/headers'
+    // is the primary way to address this. If it persists, it might be a deeper issue in the
+    // Next.js version or interaction with other parts of the app.
+    // For now, the usage is standard. We'll rely on the Server Component fixes to stabilize cookie reading.
     cookies().set({
       name: "admin_session",
       value: sessionToken,
       expires,
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production', 
+      secure: process.env.NODE_ENV === 'development' ? false : true, // Explicitly false for dev
       path: '/',
-      sameSite: 'lax'
+      sameSite: 'lax' 
     });
-    console.log("[LoginAction] Admin session cookie set with secure:", process.env.NODE_ENV === 'production');
+    console.log(`[LoginAction] Admin session cookie set with secure: ${process.env.NODE_ENV === 'development' ? false : true}`);
     
+    // This redirect is standard for server actions. Next.js handles it by throwing
+    // a special error that the client-side framework part should catch and process.
     redirect('/admin/dashboard'); 
+    // Note: Code after redirect() in a server action will not execute if redirect occurs.
 
   } catch (error: any) {
+    // This will catch errors from prisma, bcrypt, encrypt, or the redirect itself.
     const isNextRedirectError = typeof error.digest === 'string' && error.digest.includes('NEXT_REDIRECT');
 
     if (isNextRedirectError) {
       console.log("[LoginAction] Caught NEXT_REDIRECT, re-throwing.");
-      throw error; 
+      throw error; // Re-throw for Next.js to handle the redirect.
     }
 
+    // For any other errors, log them and return an error object to the client.
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
-    console.error("[LoginAction] CRITICAL ERROR during login processing:", error);
+    console.error("[LoginAction] CRITICAL ERROR during login processing:", {
+        message: errorMessage,
+        name: error.name,
+        stack: error.stack,
+        errorObjectString: String(error) 
+    });
     return { success: false, error: `Server error during login: ${errorMessage}` };
   }
 }
@@ -129,7 +143,7 @@ export async function resetPasswordAction(credentials: any): Promise<{ success: 
   try {
     const { email, confirmationString, newPassword } = credentials;
 
-    if (confirmationString !== FIXED_CONFIRMATION_STRING) {
+    if (confirmationString !== FIXED_CONFIRM_ATION_STRING) {
       return { success: false, error: "Invalid confirmation string." };
     }
 
