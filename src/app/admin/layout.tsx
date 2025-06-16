@@ -1,14 +1,12 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { headers } from 'next/headers'; // For reading current path in Server Component
-// Icons used directly in this layout, not passed as props to NavLink
-import { Coffee, AlertCircle } from "lucide-react"; 
+import { headers, cookies } from 'next/headers'; // Corrected import
+import { Coffee, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { cookies } from "next/headers"; 
 import { decryptSession } from "@/lib/session";
-import type { AdminSessionPayload, AdminRole as AppAdminRole } from "@/types"; 
+import type { AdminSessionPayload, AdminRole as AppAdminRole } from "@/types";
 import { ADMIN_ROLES } from "@/types";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -20,8 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import LogoutButton from "./LogoutButton";
-import NavLink, { type IconName } from "./NavLink"; 
-import type { NextRequest } from "next/server"; 
+import NavLink, { type IconName } from "./NavLink";
 
 export const metadata: Metadata = {
   title: "Caffico Admin",
@@ -35,19 +32,19 @@ interface AdminLayoutProps {
 export default async function AdminLayout({ children }: AdminLayoutProps) {
   let session: AdminSessionPayload | null = null;
   let sessionError: string | null = null;
-  const cookieStore = cookies(); 
   
-  // Get current pathname for logging
+  const cookieStore = cookies(); 
   const heads = headers();
-  const pathnameFromHeaders = heads.get('next-url') || 'unknown'; // next-url is set by middleware or Next.js
+  const pathnameFromHeaders = heads.get('next-url') || 'unknown';
   console.log(`[AdminLayout] Rendering for actual pathname: ${pathnameFromHeaders}`);
 
   try {
     const sessionCookie = cookieStore.get("admin_session")?.value;
+    console.log(`[AdminLayout] Admin session cookie value from cookieStore: ${sessionCookie ? `'${sessionCookie.substring(0,20)}...'` : 'not found'}`);
     if (sessionCookie) {
       session = await decryptSession(sessionCookie);
     }
-    console.log(`[AdminLayout] Session for this render:`, session);
+    console.log(`[AdminLayout] Decrypted session object in AdminLayout:`, session);
   } catch (e: any) {
     console.error("[AdminLayout] CRITICAL ERROR during session processing in AdminLayout:", e.message, e.stack);
     sessionError = e.message;
@@ -77,7 +74,6 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
   
   if (!session?.userId || !session?.role) {
     console.log('[AdminLayout] No valid session (userId or role missing). Rendering minimal layout for children (e.g., Login Page or error for protected page).');
-    // Log what children are in this case for debugging
     const childComponent = children as React.ReactElement;
     console.log('[AdminLayout Minimal] Children received:', typeof children, childComponent?.type?.displayName || childComponent?.type?.name || 'Unknown component type');
     return (
@@ -88,10 +84,9 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
   }
   
   const sessionRoleForNav = session.role as AppAdminRole;
-  console.log(`[AdminLayout] Session role "${sessionRoleForNav}" found. Rendering full admin layout.`);
+  console.log(`[AdminLayout] Session role "${sessionRoleForNav}" found. Rendering full admin layout for user: ${session.email}`);
   const childComponentFull = children as React.ReactElement;
   console.log('[AdminLayout Full] Children received:', typeof children, childComponentFull?.type?.displayName || childComponentFull?.type?.name || 'Unknown component type');
-
 
   return (
     <div className="grid min-h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
@@ -148,7 +143,6 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
           </DropdownMenu>
         </header>
         <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6 bg-background">
-          {/* Using pathnameFromHeaders as key might help ensure children re-render on navigation */}
           <div key={pathnameFromHeaders}>
             {children}
           </div>

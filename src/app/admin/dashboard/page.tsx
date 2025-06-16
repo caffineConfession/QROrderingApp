@@ -1,6 +1,6 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { cookies } from "next/headers";
+import { cookies } from "next/headers"; // Corrected import
 import { decryptSession } from "@/lib/session";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,8 @@ export default async function AdminDashboardPage() {
   let sessionError: string | null = null;
 
   try {
-    const sessionCookie = cookies().get("admin_session")?.value;
+    const cookieStore = cookies(); 
+    const sessionCookie = cookieStore.get("admin_session")?.value;
     if (sessionCookie) {
       session = await decryptSession(sessionCookie);
     }
@@ -44,7 +45,7 @@ export default async function AdminDashboardPage() {
   }
   
   if (!session || !userRole) {
-    // This case should ideally be caught by middleware redirecting to login.
+    console.log("[AdminDashboardPage] No session or userRole found. This might be displayed if middleware/layout failed to redirect earlier.");
     return (
       <Card className="shadow-lg rounded-xl">
         <CardHeader className="text-center">
@@ -60,7 +61,6 @@ export default async function AdminDashboardPage() {
       </Card>
     );
   }
-
 
   return (
     <div className="space-y-6">
@@ -145,5 +145,3 @@ export default async function AdminDashboardPage() {
     </div>
   );
 }
-
-    

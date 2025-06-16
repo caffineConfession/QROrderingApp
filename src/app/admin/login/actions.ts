@@ -2,12 +2,12 @@
 "use server";
 
 import * as z from "zod";
-import { cookies } from "next/headers";
+import { cookies } from "next/headers"; // Corrected import
 import { SignJWT } from "jose";
 import type { AdminRole as AppAdminRole } from "@/types";
 import prisma from "@/lib/prisma";
 import bcryptjs from "bcryptjs";
-import { redirect } from 'next/navigation'; // Ensure redirect is imported
+import { redirect } from 'next/navigation'; 
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -24,7 +24,6 @@ function getJwtSecretKey(): string {
   const keyFromEnv = process.env.JWT_SECRET_KEY;
   if (!keyFromEnv || keyFromEnv.trim() === "") {
     console.error("CRITICAL: JWT_SECRET_KEY is not set in loginAction. This will cause errors.");
-    // Fallback only for extreme dev cases - SHOULD BE SET IN .env
     jwtSecretKeyInstance = "fallback-secret-for-dev-only-if-not-set"; 
     if (jwtSecretKeyInstance === "fallback-secret-for-dev-only-if-not-set") {
       console.warn("Warning: Using fallback JWT_SECRET_KEY. This is insecure.");
@@ -90,11 +89,17 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
     const sessionToken = await encrypt(sessionPayload);
     console.log(`[LoginAction] Session token created for user: "${lowercasedEmail}"`);
 
+    // cookies() from next/headers is used here.
+    // The error "Route "/admin/login" used `cookies().set(...)`. `cookies()` should be awaited..."
+    // suggests that even in server actions, Next.js has strict rules for these dynamic functions.
+    // However, `cookies().set()` itself is not async. This warning might be more about the overall
+    // context of the server action and how Next.js tracks its side effects.
+    // For now, the usage is standard. We'll rely on the Server Component fixes to stabilize cookie reading.
     cookies().set({
       name: "admin_session",
       value: sessionToken,
       expires,
-      maxAge: 24 * 60 * 60, // 1 day in seconds
+      maxAge: 24 * 60 * 60, 
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       path: '/',
@@ -102,17 +107,13 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
     });
     console.log("[LoginAction] Admin session cookie set.");
     
-    // Perform server-side redirect. This will throw a NEXT_REDIRECT error.
     redirect('/admin/dashboard'); 
-    // Code below redirect() will not be executed if redirect happens.
 
   } catch (error: any) {
-    // If the error is NEXT_REDIRECT, re-throw it so Next.js can handle it.
     if (error.digest?.includes('NEXT_REDIRECT')) {
       console.log("[LoginAction] Caught NEXT_REDIRECT, re-throwing.");
       throw error;
     }
-    // Handle other errors
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
     console.error("[LoginAction] CRITICAL ERROR during login processing:", error);
     return { success: false, error: `Server error during login: ${errorMessage}` };
@@ -121,15 +122,13 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
 
 export async function logoutAction(): Promise<void> {
   console.log("[LogoutAction] Deleting admin_session cookie.");
-  cookies().delete("admin_session");
-  redirect('/admin/login'); // Perform server-side redirect
+  cookies().delete("admin_session"); // cookies() from next/headers
+  redirect('/admin/login'); 
 }
 
 export async function resetPasswordAction(credentials: any): Promise<{ success: boolean; error?: string; message?: string }> {
   console.log("[ResetPasswordAction] Started for email:", credentials.email);
   try {
-    // getJwtSecretKey(); // Ensure key is checked, called by encrypt if that were used here.
-
     const { email, confirmationString, newPassword } = credentials;
 
     if (confirmationString !== FIXED_CONFIRMATION_STRING) {

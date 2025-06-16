@@ -1,9 +1,7 @@
 
 import type { NextConfig } from 'next';
-// import type { Configuration as WebpackConfiguration } from 'webpack'; // Optional: For stronger typing of 'config'
 
 const nextConfig: NextConfig = {
-  /* config options here */
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -20,20 +18,12 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  // Removing webpack externals for @prisma/client to let Next.js handle it by default
-  // webpack: (config: any /* type it as WebpackConfiguration if you have webpack types installed */) => {
-  //   // Ensure externals is an array (Next.js usually initializes it as one)
-  //   if (!Array.isArray(config.externals)) {
-  //       config.externals = [];
-  //   }
-    
-  //   config.externals.push({
-  //     '@prisma/client': '@prisma/client',
-  //   });
-    
-  //   return config;
-  // },
+  experimental: {
+    allowedDevOrigins: [
+        "*.cloudworkstations.dev", // Allow requests from any subdomain of cloudworkstations.dev
+        // You might want to add http://localhost:YOUR_PREVIEW_PORT if you use a local proxy for Firebase Studio
+    ]
+  }
 };
 
 export default nextConfig;
-
