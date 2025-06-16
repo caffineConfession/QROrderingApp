@@ -29,7 +29,7 @@ export type ResetPasswordFormData = z.infer<typeof ResetPasswordSchema>;
 
 export default function AdminLoginPage() {
   const { toast } = useToast();
-  const router = useRouter(); // Keep router for other potential uses like router.replace
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [isLoading, setIsLoading] = useState(false);
   const [showResetForm, setShowResetForm] = useState(false);
@@ -42,7 +42,6 @@ export default function AdminLoginPage() {
         description: decodeURIComponent(errorParam),
         variant: "destructive",
       });
-      // Clear the error from URL to prevent re-toasting on refresh
       router.replace('/admin/login', { scroll: false }); 
     }
   }, [searchParams, toast, router]);
@@ -68,11 +67,9 @@ export default function AdminLoginPage() {
     setIsLoading(true);
     try {
       console.log("[Client Login] Submitting login data for:", data.email);
-      // The loginAction will either redirect or return an error object.
-      // It no longer returns { success: true } if redirecting.
       const result = await loginAction(data); 
 
-      // If 'result' is defined, it means loginAction returned an error object.
+      // If loginAction returns (i.e., doesn't redirect), it means an error occurred.
       if (result && result.error) {
         toast({
           title: "Login Failed",
@@ -80,7 +77,6 @@ export default function AdminLoginPage() {
           variant: "destructive",
         });
       } else if (result && !result.success) {
-        // Fallback for other non-success scenarios without specific error
          toast({
           title: "Login Failed",
           description: "An unknown issue occurred during login.",
@@ -88,20 +84,25 @@ export default function AdminLoginPage() {
         });
       }
       // If loginAction successfully redirects, this part of the code (after await) 
-      // might not be reached, or the component might unmount.
-      // No explicit client-side redirect (router.push or window.location.href) is needed here
-      // as the server action handles it.
+      // will likely not be reached, or the component might unmount.
+      // No explicit client-side redirect is needed here as the server action handles it.
 
     } catch (error: any) {
       // This catch block is primarily for network errors or if loginAction throws
       // an error that is *not* NEXT_REDIRECT.
-      // NEXT_REDIRECT errors are typically handled internally by Next.js and result in navigation.
       console.error("[Client Login] Error during login submission process:", error);
-      if (error.digest?.includes('NEXT_REDIRECT')) {
+      
+      // Check if the error is the specific NEXT_REDIRECT error thrown by Next.js
+      // when redirect() is called from a server action.
+      const isNextRedirectError = typeof error.digest === 'string' && error.digest.includes('NEXT_REDIRECT');
+
+      if (isNextRedirectError) {
         // This is an expected internal error when redirect() is called from a server action.
-        // Next.js should handle this by performing the redirect. No user-facing toast is needed.
-        console.log("[Client Login] NEXT_REDIRECT caught. Server should handle redirection.");
+        // Next.js handles this by performing the redirect. No user-facing toast is needed.
+        console.log("[Client Login] NEXT_REDIRECT caught. Server is handling redirection.");
+        // setIsLoading(false) will be called in finally, but the page should be redirecting away.
       } else {
+        // For any other unexpected errors:
         toast({
           title: "Login System Error",
           description: `An unexpected error occurred: ${error.message || "Please try again."}`,
@@ -109,8 +110,9 @@ export default function AdminLoginPage() {
         });
       }
     } finally {
-      // Only set isLoading to false if we're still on the page (i.e., redirect didn't happen or failed)
-      // It's generally safe to call it, but helps manage button state if error occurs before redirect.
+      // It's generally safe to call setIsLoading(false) here. 
+      // If a redirect is in progress, the component might unmount before this is problematic.
+      // If the redirect fails or an error occurs, the button needs to be re-enabled.
       setIsLoading(false);
     }
   };
@@ -137,7 +139,7 @@ export default function AdminLoginPage() {
     } catch (error: any) { 
       console.error("[Client ResetPassword] Error during password reset submission:", error);
       toast({
-        title: "Password Reset System Error",
+        title: "Password Reset SystemError",
         description: error.message || "An unexpected error occurred. Please try again later.",
         variant: "destructive",
       });
