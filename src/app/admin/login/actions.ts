@@ -1,29 +1,27 @@
 
 'use server';
 
-import * as z from "zod";
-import { cookies } from "next/headers"; 
-import type { AdminRole as AppAdminRole } from "@/types";
+import { z } from "zod";
+import { cookies } from "next/headers"; // Ensure this is from next/headers
 import prisma from "@/lib/prisma";
 import bcryptjs from "bcryptjs";
-// Removed redirect from 'next/navigation' as it's handled client-side now
-// import { redirect } from 'next/navigation'; 
 import { encryptSession } from '@/lib/session';
-import { ResetPasswordSchema, type ResetPasswordFormData } from "./schemas";
+import type { AdminRole } from "@/types";
+// Removed redirect from 'next/navigation' - client handles redirection
 
 const loginSchema = z.object({
   email: z.string().email({ message: "Please enter a valid email address." }),
   password: z.string().min(1, { message: "Password is required." }),
 });
 
-// loginAction now returns a Promise<{ success: boolean; error?: string }>
 export async function loginAction(credentials: z.infer<typeof loginSchema>): Promise<{ success: boolean; error?: string }> {
   console.log("[LoginAction] Attempting login for:", credentials.email);
   try {
-    const parsedCredentials = await loginSchema.safeParseAsync(credentials);
+    const parsedCredentials = loginSchema.safeParse(credentials);
     if (!parsedCredentials.success) {
-      console.error("[LoginAction] Validation failed:", parsedCredentials.error.issues);
-      return { success: false, error: "Invalid input format for email or password." };
+      const errorMessages = parsedCredentials.error.issues.map(issue => issue.message).join(", ");
+      console.error("[LoginAction] Validation failed:", errorMessages);
+      return { success: false, error: `Invalid input: ${errorMessages}` };
     }
     const { email, password } = parsedCredentials.data;
     const lowercasedEmail = email.toLowerCase();
@@ -38,17 +36,20 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
     });
 
     if (!adminUserRecord) {
-      return { success: false, error: `Admin user with email "${lowercasedEmail}" not found.` };
+      console.log(`[LoginAction] Admin user with email "${lowercasedEmail}" not found.`);
+      return { success: false, error: "Invalid email or password." }; // Generic error
     }
 
     const passwordMatch = await bcryptjs.compare(password, adminUserRecord.passwordHash);
 
     if (!passwordMatch) {
-      return { success: false, error: "Invalid email or password." };
+      console.log(`[LoginAction] Password mismatch for user "${lowercasedEmail}".`);
+      return { success: false, error: "Invalid email or password." }; // Generic error
     }
 
+    console.log(`[LoginAction] User "${lowercasedEmail}" authenticated successfully.`);
     const expires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 1 day
-    const sessionRole: AppAdminRole = adminUserRecord.role as AppAdminRole; 
+    const sessionRole: AdminRole = adminUserRecord.role as AdminRole; 
 
     const sessionPayload = {
       userId: adminUserRecord.id,
@@ -57,53 +58,59 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
     };
 
     const sessionToken = await encryptSession(sessionPayload);
-    console.log(`[LoginAction] Session token created for user: "${lowercasedEmail}"`);
+    console.log(`[LoginAction] Session token created for user: "${lowercasedEmail}". Token: ${sessionToken.substring(0,10)}...`);
     
     // Attempt to set the cookie
-    // The error "cookies() should be awaited" has been persistent.
-    // loginAction is async, and cookies() itself isn't awaited.
-    // This error might be related to how Next.js handles Server Actions that also try to redirect,
-    // or some other subtle interaction with the Next.js version or project setup.
-    // By removing the server-side redirect, we hope to stabilize this.
-    await cookies().set({
+    // This is the critical part that was erroring.
+    const cookieStore = cookies();
+    console.log("[LoginAction] Attempting to set 'admin_session' cookie.");
+    cookieStore.set({
       name: "admin_session",
       value: sessionToken,
       expires,
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production' ? true : false, // Explicitly false for dev
+      secure: process.env.NODE_ENV === 'production' ? true : false,
       path: '/',
       sameSite: 'lax' 
     });
-    console.log(`[LoginAction] Admin session cookie set with secure: ${process.env.NODE_ENV === 'production' ? true : false}`);
+    console.log(`[LoginAction] 'admin_session' cookie supposedly set. Secure: ${process.env.NODE_ENV === 'production' ? 'true' : 'false'}`);
     
-    // No redirect here; return success to client
+    // If we reach here, assume cookie setting was attempted successfully from action's perspective
     return { success: true };
 
   } catch (error: any) {
-    // Catching potential NEXT_REDIRECT is no longer needed here as we removed redirect()
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
-    console.error("[LoginAction] CRITICAL ERROR during login processing:", {
-        message: errorMessage,
-        name: error.name,
-        stack: error.stack,
-        errorObjectString: String(error) 
-    });
+    // This catch block is for any unexpected errors during the action, including potential errors from cookies().set()
+    // if they are catchable and not Next.js internal uncatchable errors.
+    const errorMessage = error.message || "An unknown error occurred during login.";
+    const errorName = error.name || "UnknownError";
+    const errorCode = error.code || "N/A";
+    console.error(`[LoginAction] CRITICAL ERROR: Name: ${errorName}, Code: ${errorCode}, Message: ${errorMessage}`, error.stack);
+    
+    if (error.message?.includes("cookies() should be awaited")) {
+        // This specific error is tricky as Next.js throws it sometimes even if the function is async.
+        // Log it very explicitly.
+        console.error("[LoginAction] Encountered the 'cookies() should be awaited' error despite async context.");
+    }
+    
     return { success: false, error: `Server error during login: ${errorMessage}` };
   }
 }
 
 export async function logoutAction(): Promise<{ success: boolean; error?: string }> {
   try {
+    const cookieStore = cookies();
     console.log("[LogoutAction] Deleting admin_session cookie.");
-    cookies().delete("admin_session", { path: '/' }); 
+    cookieStore.delete("admin_session", { path: '/' }); 
     return { success: true };
-    // redirect('/admin/login'); // Client will handle redirect
   } catch (error: any) {
      const errorMessage = error instanceof Error ? error.message : "An unknown error occurred during logout.";
-     console.error("[LogoutAction] Error:", errorMessage);
+     console.error("[LogoutAction] Error:", errorMessage, error.stack);
      return { success: false, error: errorMessage };
   }
 }
+
+// ResetPasswordSchema and FormData should be in './schemas'
+import { ResetPasswordSchema, type ResetPasswordFormData } from "./schemas";
 
 const FIXED_CONFIRMATION_STRING = "Dhruv the great"; 
 const SALT_ROUNDS = 10; 
@@ -111,7 +118,7 @@ const SALT_ROUNDS = 10;
 export async function resetPasswordAction(credentials: ResetPasswordFormData): Promise<{ success: boolean; error?: string; message?: string }> {
   console.log("[ResetPasswordAction] Started for email:", credentials.email);
   try {
-    const validationResult = await ResetPasswordSchema.safeParseAsync(credentials);
+    const validationResult = ResetPasswordSchema.safeParse(credentials);
     if (!validationResult.success) {
       return { success: false, error: "Invalid input format for reset password." };
     }
@@ -160,3 +167,4 @@ export async function resetPasswordAction(credentials: ResetPasswordFormData): P
     return { success: false, error: `Server error during password reset: ${errorMessage}` };
   }
 }
+    
