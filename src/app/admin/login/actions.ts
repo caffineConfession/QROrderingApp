@@ -108,8 +108,9 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
     
     // This redirect is standard for server actions. Next.js handles it by throwing
     // a special error that the client-side framework part should catch and process.
+    // Code after redirect() in a server action will not execute if redirect occurs.
+    // This is where the "NEXT_REDIRECT" error originates which is caught by the client.
     redirect('/admin/dashboard'); 
-    // Note: Code after redirect() in a server action will not execute if redirect occurs.
 
   } catch (error: any) {
     // This will catch errors from prisma, bcrypt, encrypt, or the redirect itself.
@@ -143,7 +144,7 @@ export async function resetPasswordAction(credentials: any): Promise<{ success: 
   try {
     const { email, confirmationString, newPassword } = credentials;
 
-    if (confirmationString !== FIXED_CONFIRM_ATION_STRING) {
+    if (confirmationString !== FIXED_CONFIRMATION_STRING) {
       return { success: false, error: "Invalid confirmation string." };
     }
 
@@ -184,3 +185,5 @@ export async function resetPasswordAction(credentials: any): Promise<{ success: 
     return { success: false, error: `Server error during password reset: ${errorMessage}` };
   }
 }
+
+    
