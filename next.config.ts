@@ -21,7 +21,7 @@ const nextConfig: NextConfig = {
   experimental: {
     allowedDevOrigins: [
         "*.cloudworkstations.dev", // Allow requests from any subdomain of cloudworkstations.dev
-        // You might want to add http://localhost:YOUR_PREVIEW_PORT if you use a local proxy for Firebase Studio
+        "http://localhost:9002", // Explicitly allow localhost for local dev server
     ]
   }
 };

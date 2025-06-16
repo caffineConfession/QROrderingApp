@@ -1,7 +1,7 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { headers, cookies } from 'next/headers'; // Corrected import
+import { headers, cookies } from 'next/headers'; 
 import { Coffee, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -33,9 +33,11 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
   let session: AdminSessionPayload | null = null;
   let sessionError: string | null = null;
   
+  // It's correct to call cookies() and headers() at the top of an async Server Component.
   const cookieStore = cookies(); 
-  const heads = headers();
-  const pathnameFromHeaders = heads.get('next-url') || 'unknown';
+  const pageHeaders = headers(); // Renamed to avoid conflict with imported headers
+  
+  const pathnameFromHeaders = pageHeaders.get('x-next-pathname') || pageHeaders.get('next-url') || 'unknown_pathname_in_layout'; 
   console.log(`[AdminLayout] Rendering for actual pathname: ${pathnameFromHeaders}`);
 
   try {
@@ -73,20 +75,22 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
   }
   
   if (!session?.userId || !session?.role) {
-    console.log('[AdminLayout] No valid session (userId or role missing). Rendering minimal layout for children (e.g., Login Page or error for protected page).');
-    const childComponent = children as React.ReactElement;
-    console.log('[AdminLayout Minimal] Children received:', typeof children, childComponent?.type?.displayName || childComponent?.type?.name || 'Unknown component type');
+    console.log('[AdminLayout] No valid session (userId or role missing). Rendering minimal layout.');
+    const childComponentType = (children as React.ReactElement)?.type as any;
+    const childComponentName = childComponentType?.displayName || childComponentType?.name || 'UnknownComponent';
+    console.log(`[AdminLayout Minimal] Children type received: ${typeof children}, Component name: ${childComponentName}`);
     return (
       <div className="flex min-h-screen flex-col">
-        {children}
+        {children} 
       </div>
     );
   }
   
   const sessionRoleForNav = session.role as AppAdminRole;
   console.log(`[AdminLayout] Session role "${sessionRoleForNav}" found. Rendering full admin layout for user: ${session.email}`);
-  const childComponentFull = children as React.ReactElement;
-  console.log('[AdminLayout Full] Children received:', typeof children, childComponentFull?.type?.displayName || childComponentFull?.type?.name || 'Unknown component type');
+  const childComponentTypeFull = (children as React.ReactElement)?.type as any;
+  const childComponentNameFull = childComponentTypeFull?.displayName || childComponentTypeFull?.name || 'UnknownComponent';
+  console.log(`[AdminLayout Full] Children type received: ${typeof children}, Component name: ${childComponentNameFull}`);
 
   return (
     <div className="grid min-h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
@@ -143,7 +147,7 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
           </DropdownMenu>
         </header>
         <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6 bg-background">
-          <div key={pathnameFromHeaders}>
+          <div key={pathnameFromHeaders}> 
             {children}
           </div>
         </main>

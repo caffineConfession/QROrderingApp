@@ -2,7 +2,7 @@
 "use server";
 
 import * as z from "zod";
-import { cookies } from "next/headers"; // Corrected import
+import { cookies } from "next/headers"; 
 import { SignJWT } from "jose";
 import type { AdminRole as AppAdminRole } from "@/types";
 import prisma from "@/lib/prisma";
@@ -24,9 +24,11 @@ function getJwtSecretKey(): string {
   const keyFromEnv = process.env.JWT_SECRET_KEY;
   if (!keyFromEnv || keyFromEnv.trim() === "") {
     console.error("CRITICAL: JWT_SECRET_KEY is not set in loginAction. This will cause errors.");
-    jwtSecretKeyInstance = "fallback-secret-for-dev-only-if-not-set"; 
-    if (jwtSecretKeyInstance === "fallback-secret-for-dev-only-if-not-set") {
-      console.warn("Warning: Using fallback JWT_SECRET_KEY. This is insecure.");
+    // Fallback for safety in case console.error doesn't halt execution in some envs
+    jwtSecretKeyInstance = "fallback-secret-for-dev-only-if-not-set-and-env-is-broken"; 
+    if (jwtSecretKeyInstance === "fallback-secret-for-dev-only-if-not-set-and-env-is-broken") {
+      // This will make sure it's very obvious in logs if the fallback is used.
+      console.warn("WARNING: Using a DANGEROUSLY INSECURE FALLBACK JWT_SECRET_KEY. THIS MUST BE FIXED IMMEDIATELY. ENSURE JWT_SECRET_KEY IS SET IN .env");
     }
   } else {
     jwtSecretKeyInstance = keyFromEnv;
@@ -36,8 +38,8 @@ function getJwtSecretKey(): string {
 
 async function encrypt(payload: any) {
   const secret = getJwtSecretKey();
-  if (!secret || secret === "fallback-secret-for-dev-only-if-not-set") {
-    throw new Error("JWT_SECRET_KEY is not properly configured for session encryption.");
+  if (!secret || secret === "fallback-secret-for-dev-only-if-not-set-and-env-is-broken") {
+    throw new Error("JWT_SECRET_KEY is not properly configured for session encryption. Application cannot proceed securely.");
   }
   const key = new TextEncoder().encode(secret);
   return new SignJWT(payload)
@@ -88,32 +90,28 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
 
     const sessionToken = await encrypt(sessionPayload);
     console.log(`[LoginAction] Session token created for user: "${lowercasedEmail}"`);
-
-    // cookies() from next/headers is used here.
-    // The error "Route "/admin/login" used `cookies().set(...)`. `cookies()` should be awaited..."
-    // suggests that even in server actions, Next.js has strict rules for these dynamic functions.
-    // However, `cookies().set()` itself is not async. This warning might be more about the overall
-    // context of the server action and how Next.js tracks its side effects.
-    // For now, the usage is standard. We'll rely on the Server Component fixes to stabilize cookie reading.
+    
     cookies().set({
       name: "admin_session",
       value: sessionToken,
       expires,
-      maxAge: 24 * 60 * 60, 
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: process.env.NODE_ENV === 'production', 
       path: '/',
-      sameSite: 'lax' as const
+      sameSite: 'lax'
     });
-    console.log("[LoginAction] Admin session cookie set.");
+    console.log("[LoginAction] Admin session cookie set with secure:", process.env.NODE_ENV === 'production');
     
     redirect('/admin/dashboard'); 
 
   } catch (error: any) {
-    if (error.digest?.includes('NEXT_REDIRECT')) {
+    const isNextRedirectError = typeof error.digest === 'string' && error.digest.includes('NEXT_REDIRECT');
+
+    if (isNextRedirectError) {
       console.log("[LoginAction] Caught NEXT_REDIRECT, re-throwing.");
-      throw error;
+      throw error; 
     }
+
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
     console.error("[LoginAction] CRITICAL ERROR during login processing:", error);
     return { success: false, error: `Server error during login: ${errorMessage}` };
@@ -122,7 +120,7 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
 
 export async function logoutAction(): Promise<void> {
   console.log("[LogoutAction] Deleting admin_session cookie.");
-  cookies().delete("admin_session"); // cookies() from next/headers
+  cookies().delete("admin_session", { path: '/' }); 
   redirect('/admin/login'); 
 }
 

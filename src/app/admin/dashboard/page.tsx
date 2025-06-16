@@ -1,6 +1,6 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { cookies } from "next/headers"; // Corrected import
+import { cookies } from "next/headers"; 
 import { decryptSession } from "@/lib/session";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -12,8 +12,10 @@ export default async function AdminDashboardPage() {
   let session: AdminSessionPayload | null = null;
   let sessionError: string | null = null;
 
+  // It's correct to call cookies() at the top of an async Server Component.
+  const cookieStore = cookies(); 
+
   try {
-    const cookieStore = cookies(); 
     const sessionCookie = cookieStore.get("admin_session")?.value;
     if (sessionCookie) {
       session = await decryptSession(sessionCookie);
@@ -45,13 +47,13 @@ export default async function AdminDashboardPage() {
   }
   
   if (!session || !userRole) {
-    console.log("[AdminDashboardPage] No session or userRole found. This might be displayed if middleware/layout failed to redirect earlier.");
+    console.warn("[AdminDashboardPage] Reached with no session or userRole. This is unexpected if middleware and layout are functioning correctly.");
     return (
       <Card className="shadow-lg rounded-xl">
         <CardHeader className="text-center">
           <AlertCircle className="mx-auto h-10 w-10 text-amber-500 mb-3" />
-          <CardTitle className="flex items-center justify-center"><AlertCircle className="mr-2"/>Access Denied</CardTitle>
-          <CardDescription>You need to be logged in with appropriate permissions to view this page.</CardDescription>
+          <CardTitle className="flex items-center justify-center"><AlertCircle className="mr-2"/>Access Issue</CardTitle>
+          <CardDescription>Could not verify your session for the dashboard. Please try logging in again.</CardDescription>
         </CardHeader>
         <CardContent className="text-center">
           <Button asChild>
