@@ -65,7 +65,7 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
     // This error might be related to how Next.js handles Server Actions that also try to redirect,
     // or some other subtle interaction with the Next.js version or project setup.
     // By removing the server-side redirect, we hope to stabilize this.
-    cookies().set({
+    await cookies().set({
       name: "admin_session",
       value: sessionToken,
       expires,

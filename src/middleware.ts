@@ -1,4 +1,4 @@
-
+// src/middleware.ts
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { decryptSession } from '@/lib/session';
@@ -14,41 +14,45 @@ export async function middleware(request: NextRequest) {
 
   console.log(`[Middleware] Request for path: ${pathname}`);
 
-  // Log all cookies received by the middleware for this request
-  const allCookies = request.cookies.getAll();
-  console.log(`[Middleware] Path: "${pathname}". All cookies received:`, allCookies.map(c => ({ name: c.name, value: c.value.substring(0,10) + '...' })));
+  const allCookiesArray = request.cookies.getAll();
+  if (allCookiesArray.length > 0) {
+    // Simplified logging for all cookies
+    console.log(`[Middleware] Path: "${pathname}". All cookies received (names):`, JSON.stringify(allCookiesArray.map(c => c.name)));
+  } else {
+    console.log(`[Middleware] Path: "${pathname}". No cookies received.`);
+  }
 
 
   if (!pathname.startsWith(ADMIN_BASE_PATH)) {
-    console.log(`[Middleware] Path "${pathname}" is not an admin path. Allowing.`);
     return NextResponse.next({ request: { headers: requestHeaders } });
   }
 
   const sessionCookieValue = request.cookies.get('admin_session')?.value;
   const sessionCookieFound = !!sessionCookieValue;
-  console.log(`[Middleware] Path: "${pathname}". Attempting to read 'admin_session' cookie. Value found: ${sessionCookieFound ? `'${sessionCookieValue?.substring(0, 20)}...'` : 'not found'}`);
-
   let session = null;
-  if (sessionCookieValue) {
-    console.log(`[Middleware] Path: "${pathname}". Cookie found, calling decryptSession for token snippet: '${sessionCookieValue.substring(0,20)}...'`);
+
+  const logPrefix = `[Middleware] Path: "${pathname}".`;
+
+  if (sessionCookieFound) {
+    console.log(`${logPrefix} Attempting to read 'admin_session' cookie. Value found: ${sessionCookieValue ? `'${sessionCookieValue.substring(0, 20)}...'` : 'undefined/empty'}`);
     session = await decryptSession(sessionCookieValue); 
     if (session) {
       const expiresDate = session.exp ? new Date(session.exp * 1000) : 'N/A';
-      console.log(`[Middleware] Path: "${pathname}". Session decrypted successfully by middleware. UserID: ${session.userId}, Role: ${session.role}, Expires: ${expiresDate}`);
+      console.log(`${logPrefix} Session decrypted successfully by middleware. UserID: ${session.userId}, Role: ${session.role}, Expires: ${expiresDate}`);
     } else {
-      console.log(`[Middleware] Path: "${pathname}". decryptSession returned null for the cookie (indicates invalid/expired token or decryption error).`);
+      console.log(`${logPrefix} decryptSession returned null for the cookie: ${sessionCookieValue ? `'${sessionCookieValue.substring(0,20)}...'` : 'undefined/empty'}`);
     }
   } else {
-    console.log(`[Middleware] Path: "${pathname}". No 'admin_session' cookie value was found by middleware.`);
+    console.log(`${logPrefix} No 'admin_session' cookie value was found by middleware.`);
   }
 
   if (pathname === ADMIN_LOGIN_PATH) {
     let response;
     if (session?.userId && session?.role) {
-      console.log(`[Middleware] Path is ADMIN_LOGIN_PATH but a valid session exists. Redirecting to ${ADMIN_DASHBOARD_PATH}`);
+      console.log(`${logPrefix} Path is ADMIN_LOGIN_PATH but a valid session exists. Redirecting to ${ADMIN_DASHBOARD_PATH}`);
       response = NextResponse.redirect(new URL(ADMIN_DASHBOARD_PATH, request.url));
     } else {
-      console.log(`[Middleware] Path is ADMIN_LOGIN_PATH. No valid session or already on login. Allowing access.`);
+      console.log(`${logPrefix} Path is ADMIN_LOGIN_PATH. No valid session or already on login. Allowing access.`);
       response = NextResponse.next({ request: { headers: requestHeaders } });
     }
     response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -58,21 +62,21 @@ export async function middleware(request: NextRequest) {
   }
 
   if (!session?.userId || !session?.role) {
-    console.log(`[Middleware] Path "${pathname}" is PROTECTED. Session is invalid (userId or role missing). Redirecting to login.`);
+    console.log(`${logPrefix} Path is PROTECTED. Session is invalid (userId or role missing). Redirecting to login.`);
     const loginUrl = new URL(ADMIN_LOGIN_PATH, request.url);
     
     let errorMessage = `Login Required: Session invalid or expired for path '${pathname}'. Please login again.`;
-    if (!sessionCookieValue) {
+    if (!sessionCookieFound) {
         errorMessage = `Login Required: No session found for path '${pathname}'. Please login.`;
-    } else if (!session) {
-        errorMessage = `Login Required: Session token for path '${pathname}' was invalid (e.g., expired, malformed, or signature mismatch). Please login again.`;
+    } else if (!session) { 
+        errorMessage = `Login Required: Session token for path '${pathname}' was invalid. Please login again.`;
     }
     
     loginUrl.searchParams.set('error', encodeURIComponent(errorMessage));
     
     const redirectResponse = NextResponse.redirect(loginUrl);
-    if (sessionCookieValue && !session) {
-        console.log(`[Middleware] Path "${pathname}". Clearing potentially invalid 'admin_session' cookie due to decryption failure or invalid content.`);
+    if (sessionCookieValue && !session) { 
+        console.log(`${logPrefix} Clearing potentially invalid 'admin_session' cookie.`);
         redirectResponse.cookies.delete('admin_session', { path: '/' });
     }
     redirectResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -81,12 +85,12 @@ export async function middleware(request: NextRequest) {
     return redirectResponse;
   }
 
-  console.log(`[Middleware] Path "${pathname}" is PROTECTED. Session valid. Allowing access for user: ${session.email}, role: ${session.role}.`);
-  const response = NextResponse.next({ request: { headers: requestHeaders } });
-  response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  response.headers.set('Pragma', 'no-cache');
-  response.headers.set('Expires', '0');
-  return response;
+  console.log(`${logPrefix} Path is PROTECTED. Session valid. Allowing access for user: ${session.email}, role: ${session.role}.`);
+  const finalResponse = NextResponse.next({ request: { headers: requestHeaders } });
+  finalResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  finalResponse.headers.set('Pragma', 'no-cache');
+  finalResponse.headers.set('Expires', '0');
+  return finalResponse;
 }
 
 export const config = {
