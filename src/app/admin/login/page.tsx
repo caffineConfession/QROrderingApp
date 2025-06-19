@@ -15,11 +15,11 @@ import { ResetPasswordSchema, type ResetPasswordFormData } from "./schemas";
 import { useToast } from "@/hooks/use-toast";
 import { useSearchParams } from "next/navigation";
 
-const loginSchema = z.object({
+const loginFormSchema = z.object({
   email: z.string().email({ message: "Please enter a valid email address." }),
   password: z.string().min(1, { message: "Password is required." }),
 });
-type LoginFormSchema = z.infer<typeof loginSchema>;
+type LoginFormSchema = z.infer<typeof loginFormSchema>;
 
 export default function AdminLoginPage() {
   const { toast } = useToast();
@@ -35,14 +35,13 @@ export default function AdminLoginPage() {
         description: decodeURIComponent(errorParam),
         variant: "destructive",
       });
-      // Clear the error from URL to prevent re-showing on refresh
       const currentPath = window.location.pathname;
       window.history.replaceState(null, '', currentPath);
     }
   }, [searchParams, toast]);
 
   const loginForm = useForm<LoginFormSchema>({
-    resolver: zodResolver(loginSchema),
+    resolver: zodResolver(loginFormSchema),
     defaultValues: {
       email: "",
       password: "",
@@ -60,33 +59,38 @@ export default function AdminLoginPage() {
 
   const onLoginSubmit: SubmitHandler<LoginFormSchema> = async (data) => {
     setIsLoading(true);
+    console.log("[Client Login] Submitting login data for:", data.email);
     try {
-      // 1. Call loginAction to authenticate and get session token
       const authResult = await loginAction(data);
+      console.log("[Client Login] Auth action result:", authResult);
 
       if (authResult.success && authResult.sessionToken) {
-        // 2. Call API route to set the cookie
+        console.log("[Client Login] Auth success, attempting to set session cookie via API for token:", authResult.sessionToken.substring(0,10) + "...");
+        
         const setCookieResponse = await fetch('/api/auth/set-session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ sessionToken: authResult.sessionToken }),
         });
 
+        console.log("[Client Login] Set cookie API response status:", setCookieResponse.status);
         const setCookieResult = await setCookieResponse.json();
+        console.log("[Client Login] Set cookie API response body:", setCookieResult);
 
         if (setCookieResponse.ok && setCookieResult.success) {
           toast({
             title: "Login Successful!",
-            description: "Redirecting to your dashboard...",
+            description: "Cookie set. Redirecting to your dashboard...",
           });
-          // Add a small delay for cookie to settle if needed, then redirect
+          // Add a small delay to allow cookie processing by browser.
           setTimeout(() => {
+            console.log("[Client Login] Redirecting to /admin/dashboard");
             window.location.href = "/admin/dashboard";
-          }, 100); // 100ms delay
+          }, 250); // 250ms delay
         } else {
           toast({
             title: "Login Failed",
-            description: setCookieResult.error || "Could not set session. Please try again.",
+            description: setCookieResult.error || "Could not set session after authentication. Please try again.",
             variant: "destructive",
           });
           setIsLoading(false);
@@ -94,7 +98,7 @@ export default function AdminLoginPage() {
       } else {
         toast({
           title: "Login Failed",
-          description: authResult.error || "Invalid credentials or server error.",
+          description: authResult.error || "Invalid credentials or server error during authentication.",
           variant: "destructive",
         });
         setIsLoading(false);
@@ -108,7 +112,6 @@ export default function AdminLoginPage() {
       });
       setIsLoading(false);
     }
-    // setIsLoading(false) is handled within conditions; successful login navigates away.
   };
 
   const onResetPasswordSubmit: SubmitHandler<ResetPasswordFormData> = async (data) => {
