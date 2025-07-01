@@ -1,3 +1,4 @@
+
 "use client";
 
 import { Button } from "@/components/ui/button";
@@ -16,7 +17,7 @@ export default function LogoutButton() {
       try {
         await logoutAction();
       } catch (error: any) {
-        if (error.digest === 'NEXT_REDIRECT') {
+        if (error.digest?.includes('NEXT_REDIRECT')) {
             console.log("Server initiated logout redirect.");
             // This is the expected path, let the browser handle the redirect.
             return;

@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useForm, type SubmitHandler } from "react-hook-form";
@@ -62,21 +63,16 @@ export default function AdminLoginPage() {
     console.log("[Client Login] Submitting login data to server action...");
     try {
       await loginAction(data);
-      // This line should not be reached if loginAction successfully redirects,
-      // as the redirect call throws an error.
-      console.warn("[Client Login] loginAction completed without throwing a redirect. This is unexpected.");
-      toast({ title: "Login Status Unknown", description: "The server did not respond as expected.", variant: "destructive" });
-      setIsLoading(false);
+      // This part is not expected to be reached on successful redirect
     } catch (error: any) {
-      if (error.digest === 'NEXT_REDIRECT') {
-        // This is the expected path for a successful redirect.
-        // We don't need to do anything; the browser will handle the navigation.
-        // The "isLoading" state will remain true until the new page loads.
+      // The `redirect()` function throws an error with the digest 'NEXT_REDIRECT'.
+      // We need to check for this digest to differentiate a successful redirect from a true error.
+      if (error.digest?.includes('NEXT_REDIRECT')) {
         console.log("[Client Login] Server initiated redirect. Awaiting navigation...");
-        return;
+        // This is the expected path. Let the browser handle the redirect from the server's response.
+        return; 
       }
       
-      // This handles actual errors from the server action (e.g., "Invalid email or password").
       console.error("[Client Login] Login action failed with an error:", error);
       toast({
         title: "Login Failed",
