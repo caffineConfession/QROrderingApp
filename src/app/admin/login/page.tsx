@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useForm, type SubmitHandler } from "react-hook-form";
@@ -59,58 +58,27 @@ export default function AdminLoginPage() {
 
   const onLoginSubmit: SubmitHandler<LoginFormSchema> = async (data) => {
     setIsLoading(true);
-    console.log("[Client Login] Submitting login data for:", data.email);
+    console.log("[Client Login] Submitting login data to server action...");
     try {
-      const authResult = await loginAction(data);
-      console.log("[Client Login] Auth action result:", authResult);
-
-      if (authResult.success && authResult.sessionToken) {
-        console.log("[Client Login] Auth success, attempting to set session cookie via API for token:", authResult.sessionToken.substring(0,10) + "...");
-        
-        const setCookieResponse = await fetch('/api/auth/set-session', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionToken: authResult.sessionToken }),
-        });
-
-        console.log("[Client Login] Set cookie API response status:", setCookieResponse.status);
-        const setCookieResult = await setCookieResponse.json();
-        console.log("[Client Login] Set cookie API response body:", setCookieResult);
-
-        if (setCookieResponse.ok && setCookieResult.success) {
-          toast({
-            title: "Login Successful!",
-            description: "Cookie set. Redirecting to your dashboard...",
-          });
-          // Add a small delay to allow cookie processing by browser.
-          setTimeout(() => {
-            console.log("[Client Login] Redirecting to /admin/dashboard");
-            window.location.href = "/admin/dashboard";
-          }, 250); // 250ms delay
-        } else {
-          toast({
-            title: "Login Failed",
-            description: setCookieResult.error || "Could not set session after authentication. Please try again.",
-            variant: "destructive",
-          });
-          setIsLoading(false);
-        }
-      } else {
+      const result = await loginAction(data);
+      if (result?.error) {
         toast({
           title: "Login Failed",
-          description: authResult.error || "Invalid credentials or server error during authentication.",
+          description: result.error,
           variant: "destructive",
         });
         setIsLoading(false);
       }
     } catch (error: any) {
-      console.error("[Client Login] Error during login submission process:", error);
-      toast({
-        title: "Login System Error",
-        description: `An unexpected error occurred: ${error.message || "Please try again."}`,
-        variant: "destructive",
-      });
-      setIsLoading(false);
+      if (error.constructor.name !== 'RedirectError') {
+          console.error("[Client Login] Error during login submission:", error);
+          toast({
+            title: "Login System Error",
+            description: `An unexpected error occurred: ${error.message || "Please try again."}`,
+            variant: "destructive",
+          });
+          setIsLoading(false);
+      }
     }
   };
 
@@ -263,4 +231,3 @@ export default function AdminLoginPage() {
     </div>
   );
 }
-

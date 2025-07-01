@@ -1,21 +1,19 @@
-
 'use server';
 
 import { z } from "zod";
-import { cookies } from "next/headers";
 import prisma from "@/lib/prisma";
 import bcryptjs from "bcryptjs";
 import { encryptSession } from '@/lib/session';
 import type { AdminRole } from "@/types";
-import { ResetPasswordSchema, type ResetPasswordFormData } from "./schemas"; // Keep schema import
+import { ResetPasswordSchema, type ResetPasswordFormData } from "./schemas";
+import { redirect } from 'next/navigation';
 
 const loginSchema = z.object({
   email: z.string().email({ message: "Please enter a valid email address." }),
   password: z.string().min(1, { message: "Password is required." }),
 });
 
-// Modified loginAction to return token instead of setting cookie directly
-export async function loginAction(credentials: z.infer<typeof loginSchema>): Promise<{ success: boolean; error?: string; sessionToken?: string }> {
+export async function loginAction(credentials: z.infer<typeof loginSchema>): Promise<{ success: boolean; error?: string; }> {
   console.log("[LoginAction] Attempting login for:", credentials.email);
   
   const parsedCredentials = loginSchema.safeParse(credentials);
@@ -58,12 +56,15 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
       role: sessionRole,
     };
     const sessionToken = await encryptSession(sessionPayload);
-    console.log(`[LoginAction] Session token generated for user: "${lowercasedEmail}"`);
+    console.log(`[LoginAction] Session token generated. Redirecting to verification path.`);
     
-    // Return token instead of setting cookie
-    return { success: true, sessionToken };
+    redirect(`/admin/login/verify?token=${sessionToken}`);
 
   } catch (error: any) {
+    if (error.constructor.name === 'RedirectError') {
+      console.log("[LoginAction] Caught NEXT_REDIRECT, re-throwing.");
+      throw error;
+    }
     const errorMessage = error.message || "An unknown error occurred during login process.";
     const errorName = error.name || "UnknownError";
     console.error(`[LoginAction] GENERAL ERROR: Name: ${errorName}, Message: ${errorMessage}`, error.stack);
@@ -71,18 +72,9 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
   }
 }
 
-export async function logoutAction(): Promise<{ success: boolean; error?: string }> {
-  try {
-    const cookieStore = cookies();
-    console.log("[LogoutAction] Deleting admin_session cookie.");
-    cookieStore.delete("admin_session", { path: '/' });
-    // No redirect here, client will handle
-    return { success: true };
-  } catch (error: any) {
-     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred during logout.";
-     console.error("[LogoutAction] Error:", errorMessage, error.stack);
-     return { success: false, error: errorMessage };
-  }
+export async function logoutAction(): Promise<void> {
+  console.log("[LogoutAction] Initiating logout. Redirecting to clear session.");
+  redirect('/admin/logout');
 }
 
 const FIXED_CONFIRMATION_STRING = "Dhruv the great";
