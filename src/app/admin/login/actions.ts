@@ -14,72 +14,54 @@ const loginSchema = z.object({
   password: z.string().min(1, { message: "Password is required." }),
 });
 
-export async function loginAction(credentials: z.infer<typeof loginSchema>): Promise<{ success: boolean; error?: string; }> {
+export async function loginAction(credentials: z.infer<typeof loginSchema>) {
   console.log("[LoginAction] Attempting login for:", credentials.email);
   
   const parsedCredentials = loginSchema.safeParse(credentials);
   if (!parsedCredentials.success) {
     const errorMessages = parsedCredentials.error.issues.map(issue => issue.message).join(", ");
     console.error("[LoginAction] Validation failed:", errorMessages);
-    return { success: false, error: `Invalid input: ${errorMessages}` };
+    // Throw an error that the client can catch and display
+    throw new Error(`Invalid input: ${errorMessages}`);
   }
   
   const { email, password } = parsedCredentials.data;
   const lowercasedEmail = email.toLowerCase();
 
-  try {
-    if (!process.env.DATABASE_URL) {
-        console.error("[LoginAction] DATABASE_URL is not set.");
-        return { success: false, error: "Database connection is not configured." };
-    }
+  const adminUserRecord = await prisma.adminUser.findUnique({
+    where: { email: lowercasedEmail },
+  });
 
-    const adminUserRecord = await prisma.adminUser.findUnique({
-      where: { email: lowercasedEmail },
-    });
-
-    if (!adminUserRecord) {
-      console.log(`[LoginAction] Admin user with email "${lowercasedEmail}" not found.`);
-      return { success: false, error: "Invalid email or password." };
-    }
-
-    const passwordMatch = await bcryptjs.compare(password, adminUserRecord.passwordHash);
-
-    if (!passwordMatch) {
-      console.log(`[LoginAction] Password mismatch for user "${lowercasedEmail}".`);
-      return { success: false, error: "Invalid email or password." };
-    }
-    console.log(`[LoginAction] User "${lowercasedEmail}" authenticated successfully.`);
-
-    const sessionRole: AdminRole = adminUserRecord.role as AdminRole;
-    const sessionPayload = {
-      userId: adminUserRecord.id,
-      email: adminUserRecord.email,
-      role: sessionRole,
-    };
-    const sessionToken = await encryptSession(sessionPayload);
-    console.log(`[LoginAction] Session token generated. Redirecting to verification URL.`);
-    
-    // Instead of setting cookie here, redirect to a verification URL with the token.
-    // The middleware will catch this, set the cookie, and redirect to the dashboard.
-    redirect(`/admin/login/verify?token=${sessionToken}`);
-
-  } catch (error: any) {
-    // If the error is a NEXT_REDIRECT, re-throw it so Next.js can handle it.
-    if (error.digest === 'NEXT_REDIRECT') {
-        console.log("[LoginAction] Caught NEXT_REDIRECT, re-throwing.");
-        throw error;
-    }
-    const errorMessage = error.message || "An unknown error occurred during login process.";
-    const errorName = error.name || "UnknownError";
-    console.error(`[LoginAction] GENERAL ERROR: Name: ${errorName}, Message: ${errorMessage}`, error.stack);
-    return { success: false, error: `Server error: ${errorMessage}` };
+  if (!adminUserRecord) {
+    console.log(`[LoginAction] Admin user with email "${lowercasedEmail}" not found.`);
+    throw new Error("Invalid email or password.");
   }
+
+  const passwordMatch = await bcryptjs.compare(password, adminUserRecord.passwordHash);
+
+  if (!passwordMatch) {
+    console.log(`[LoginAction] Password mismatch for user "${lowercasedEmail}".`);
+    throw new Error("Invalid email or password.");
+  }
+  
+  console.log(`[LoginAction] User "${lowercasedEmail}" authenticated successfully.`);
+
+  const sessionRole: AdminRole = adminUserRecord.role as AdminRole;
+  const sessionPayload = {
+    userId: adminUserRecord.id,
+    email: adminUserRecord.email,
+    role: sessionRole,
+  };
+  const sessionToken = await encryptSession(sessionPayload);
+  console.log(`[LoginAction] Session token generated. Redirecting to verification URL.`);
+  
+  // This will throw NEXT_REDIRECT, which is expected and should not be caught here.
+  redirect(`/admin/login/verify?token=${sessionToken}`);
 }
 
-export async function logoutAction(): Promise<void> {
-  // This action's sole purpose is to trigger a redirect to a path
-  // that the middleware will intercept to clear the cookie.
+export async function logoutAction() {
   console.log("[LogoutAction] Initiating logout. Redirecting to clear session via middleware.");
+  // This will throw NEXT_REDIRECT, which is expected and should not be caught here.
   redirect('/admin/logout');
 }
 
@@ -101,8 +83,7 @@ export async function resetPasswordAction(credentials: ResetPasswordFormData): P
     }
 
     const lowercasedEmail = email.toLowerCase();
-    console.log(`[ResetPasswordAction] Querying DB for: ${lowercasedEmail}`);
-
+    
     if (!process.env.DATABASE_URL) {
         console.error("[ResetPasswordAction] DATABASE_URL is not set.");
         return { success: false, error: "Database connection is not configured." };
@@ -117,8 +98,7 @@ export async function resetPasswordAction(credentials: ResetPasswordFormData): P
     }
 
     const newPasswordHash = await bcryptjs.hash(newPassword, SALT_ROUNDS);
-    console.log(`[ResetPasswordAction] New password hashed for "${lowercasedEmail}".`);
-
+    
     await prisma.adminUser.update({
       where: { id: adminUserRecord.id },
       data: { passwordHash: newPasswordHash },

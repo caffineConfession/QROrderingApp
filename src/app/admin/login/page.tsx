@@ -61,36 +61,26 @@ export default function AdminLoginPage() {
     setIsLoading(true);
     console.log("[Client Login] Submitting login data to server action...");
     try {
-      // The server action will now handle the redirect itself.
-      // If it fails, it will return an error object.
-      const result = await loginAction(data);
-
-      if (result?.error) {
-         console.error("[Client Login] Login action failed:", result.error);
-        toast({
-          title: "Login Failed",
-          description: result.error,
-          variant: "destructive",
-        });
-        setIsLoading(false);
-      }
-      // On success, the server action triggers a redirect, and this client-side
-      // code execution will stop as the browser navigates away. The loading
-      // spinner will remain until the new page loads.
+      await loginAction(data);
+      // This line should not be reached if loginAction successfully redirects,
+      // as the redirect call throws an error.
+      console.warn("[Client Login] loginAction completed without throwing a redirect. This is unexpected.");
+      toast({ title: "Login Status Unknown", description: "The server did not respond as expected.", variant: "destructive" });
+      setIsLoading(false);
     } catch (error: any) {
-       // The `redirect()` from a server action throws an error with a specific digest.
-       // We should check for it, but otherwise, any other error is a real problem.
       if (error.digest === 'NEXT_REDIRECT') {
-        // This is expected. The browser will handle the redirect.
-        // We don't need to do anything here, and especially not stop the loading spinner.
+        // This is the expected path for a successful redirect.
+        // We don't need to do anything; the browser will handle the navigation.
+        // The "isLoading" state will remain true until the new page loads.
         console.log("[Client Login] Server initiated redirect. Awaiting navigation...");
         return;
       }
       
-      console.error("[Client Login] Unexpected error during login submission:", error);
+      // This handles actual errors from the server action (e.g., "Invalid email or password").
+      console.error("[Client Login] Login action failed with an error:", error);
       toast({
         title: "Login Failed",
-        description: `Client Error: ${error.message || "Please try again."}`,
+        description: error.message || "An unexpected error occurred.",
         variant: "destructive",
       });
       setIsLoading(false);
