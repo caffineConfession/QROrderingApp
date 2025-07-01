@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useForm, type SubmitHandler } from "react-hook-form";
@@ -62,31 +63,23 @@ export default function AdminLoginPage() {
     try {
       const result = await loginAction(data);
       
-      // If loginAction returns an object, it's a predictable failure (e.g., wrong password).
-      if (result && result.error) {
+      if (result.success && result.token) {
+        // Successful authentication, now redirect the client
+        console.log("[Client Login] Auth successful. Redirecting to verification URL.");
+        window.location.href = `/admin/login/verify?token=${result.token}`;
+        // No need to setIsLoading(false) here because the page will navigate away.
+      } else {
+        // Authentication failed with a predictable error (e.g., wrong password)
         toast({
           title: "Login Failed",
-          description: result.error,
+          description: result.error || "An unknown error occurred.",
           variant: "destructive",
         });
         setIsLoading(false);
       }
-      // If loginAction succeeds, it throws NEXT_REDIRECT, which is caught below.
-      // If it returns nothing (void), we reset loading state as a fallback.
-      else {
-        // This path should ideally not be taken if the action always returns or throws.
-        setIsLoading(false);
-      }
     } catch (error: any) {
-      // The `redirect()` function throws an error with the digest 'NEXT_REDIRECT'.
-      if (error.digest?.includes('NEXT_REDIRECT')) {
-        console.log("[Client Login] Server initiated redirect. Awaiting navigation...");
-        // The "isLoading" state will be cleared by the full page navigation.
-        return; 
-      }
-      
-      // This catches unexpected server errors (e.g., database down).
-      console.error("[Client Login] An unexpected error occurred during login:", error);
+      // This catches unexpected server errors (e.g., database down, network error).
+      console.error("[Client Login] An unexpected error occurred during login action call:", error);
       toast({
         title: "Login Failed",
         description: "An unexpected server error occurred. Please try again.",

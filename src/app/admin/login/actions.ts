@@ -1,3 +1,4 @@
+
 'use server';
 
 import { z } from "zod";
@@ -13,7 +14,7 @@ const loginSchema = z.object({
   password: z.string().min(1, { message: "Password is required." }),
 });
 
-export async function loginAction(credentials: z.infer<typeof loginSchema>): Promise<{ success: false; error: string; } | void> {
+export async function loginAction(credentials: z.infer<typeof loginSchema>): Promise<{ success: boolean; error?: string; token?: string; }> {
   console.log("[LoginAction] Attempting login for:", credentials.email);
   
   const parsedCredentials = loginSchema.safeParse(credentials);
@@ -26,39 +27,46 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
   const { email, password } = parsedCredentials.data;
   const lowercasedEmail = email.toLowerCase();
 
-  const adminUserRecord = await prisma.adminUser.findUnique({
-    where: { email: lowercasedEmail },
-  });
+  try {
+    const adminUserRecord = await prisma.adminUser.findUnique({
+      where: { email: lowercasedEmail },
+    });
 
-  if (!adminUserRecord) {
-    console.log(`[LoginAction] Admin user with email "${lowercasedEmail}" not found.`);
-    return { success: false, error: "Invalid email or password." };
+    if (!adminUserRecord) {
+      console.log(`[LoginAction] Admin user with email "${lowercasedEmail}" not found.`);
+      return { success: false, error: "Invalid email or password." };
+    }
+
+    const passwordMatch = await bcryptjs.compare(password, adminUserRecord.passwordHash);
+
+    if (!passwordMatch) {
+      console.log(`[LoginAction] Password mismatch for user "${lowercasedEmail}".`);
+      return { success: false, error: "Invalid email or password." };
+    }
+    
+    console.log(`[LoginAction] User "${lowercasedEmail}" authenticated successfully.`);
+
+    const sessionPayload = {
+      userId: adminUserRecord.id,
+      email: adminUserRecord.email,
+      role: adminUserRecord.role,
+    };
+    const sessionToken = await encryptSession(sessionPayload);
+    console.log(`[LoginAction] Session token generated. Returning token to client.`);
+    
+    // Instead of redirecting, return the token
+    return { success: true, token: sessionToken };
+
+  } catch (error: any) {
+    console.error("[LoginAction] A critical error occurred during login process:", error);
+    // This will catch database errors or other unexpected issues.
+    return { success: false, error: 'A server error occurred. Please try again later.' };
   }
-
-  const passwordMatch = await bcryptjs.compare(password, adminUserRecord.passwordHash);
-
-  if (!passwordMatch) {
-    console.log(`[LoginAction] Password mismatch for user "${lowercasedEmail}".`);
-    return { success: false, error: "Invalid email or password." };
-  }
-  
-  console.log(`[LoginAction] User "${lowercasedEmail}" authenticated successfully.`);
-
-  const sessionPayload = {
-    userId: adminUserRecord.id,
-    email: adminUserRecord.email,
-    role: adminUserRecord.role,
-  };
-  const sessionToken = await encryptSession(sessionPayload);
-  console.log(`[LoginAction] Session token generated. Redirecting to verification URL.`);
-  
-  // This will throw NEXT_REDIRECT, which is expected and should not be caught here.
-  redirect(`/admin/login/verify?token=${sessionToken}`);
 }
 
 export async function logoutAction() {
   console.log("[LogoutAction] Initiating logout. Redirecting to clear session via middleware.");
-  // This will throw NEXT_REDIRECT, which is expected and should not be caught here.
+  // This redirect is fine as it's typically called from a simple link or button click, not a complex form state.
   redirect('/admin/logout');
 }
 
