@@ -11,6 +11,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { KeyRound, Mail, ShieldAlert, LockKeyhole, RefreshCw } from "lucide-react";
 import { useState, useEffect } from "react";
 import { loginAction, resetPasswordAction } from "./actions";
+import { setSessionCookie } from './verify-server-action'; // Import the new action
 import { ResetPasswordSchema, type ResetPasswordFormData } from "./schemas";
 import { useToast } from "@/hooks/use-toast";
 import { useSearchParams } from "next/navigation";
@@ -35,7 +36,6 @@ export default function AdminLoginPage() {
         description: decodeURIComponent(errorParam),
         variant: "destructive",
       });
-      // Clean the URL after showing the toast
       const currentPath = window.location.pathname;
       window.history.replaceState(null, '', currentPath);
     }
@@ -64,12 +64,21 @@ export default function AdminLoginPage() {
       const result = await loginAction(data);
       
       if (result.success && result.token) {
-        // Successful authentication, now redirect the client
-        console.log("[Client Login] Auth successful. Redirecting to verification URL.");
-        window.location.href = `/admin/login/verify?token=${result.token}`;
-        // No need to setIsLoading(false) here because the page will navigate away.
+        console.log("[Client Login] Auth successful. Attempting to set session cookie via server action.");
+        const cookieResult = await setSessionCookie(result.token);
+        
+        if (cookieResult.success) {
+          console.log("[Client Login] Cookie set successfully. Redirecting to dashboard.");
+          window.location.href = '/admin/dashboard';
+        } else {
+          toast({
+            title: "Login Failed",
+            description: cookieResult.error || "Could not set session. Please try again.",
+            variant: "destructive",
+          });
+          setIsLoading(false);
+        }
       } else {
-        // Authentication failed with a predictable error (e.g., wrong password)
         toast({
           title: "Login Failed",
           description: result.error || "An unknown error occurred.",
@@ -78,8 +87,7 @@ export default function AdminLoginPage() {
         setIsLoading(false);
       }
     } catch (error: any) {
-      // This catches unexpected server errors (e.g., database down, network error).
-      console.error("[Client Login] An unexpected error occurred during login action call:", error);
+      console.error("[Client Login] An unexpected error occurred during login submission:", error);
       toast({
         title: "Login Failed",
         description: "An unexpected server error occurred. Please try again.",

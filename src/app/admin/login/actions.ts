@@ -54,7 +54,7 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
     const sessionToken = await encryptSession(sessionPayload);
     console.log(`[LoginAction] Session token generated. Returning token to client.`);
     
-    // Instead of redirecting, return the token
+    // Instead of redirecting or setting a cookie, return the token
     return { success: true, token: sessionToken };
 
   } catch (error: any) {
@@ -66,7 +66,6 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
 
 export async function logoutAction() {
   console.log("[LogoutAction] Initiating logout. Redirecting to clear session via middleware.");
-  // This redirect is fine as it's typically called from a simple link or button click, not a complex form state.
   redirect('/admin/logout');
 }
 
