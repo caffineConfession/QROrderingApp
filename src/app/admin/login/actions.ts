@@ -4,7 +4,6 @@ import { z } from "zod";
 import prisma from "@/lib/prisma";
 import bcryptjs from "bcryptjs";
 import { encryptSession } from '@/lib/session';
-import type { AdminRole } from "@/types";
 import { ResetPasswordSchema, type ResetPasswordFormData } from "./schemas";
 import { redirect } from 'next/navigation';
 import { cookies } from "next/headers";
@@ -14,15 +13,14 @@ const loginSchema = z.object({
   password: z.string().min(1, { message: "Password is required." }),
 });
 
-export async function loginAction(credentials: z.infer<typeof loginSchema>) {
+export async function loginAction(credentials: z.infer<typeof loginSchema>): Promise<{ success: false; error: string; } | void> {
   console.log("[LoginAction] Attempting login for:", credentials.email);
   
   const parsedCredentials = loginSchema.safeParse(credentials);
   if (!parsedCredentials.success) {
     const errorMessages = parsedCredentials.error.issues.map(issue => issue.message).join(", ");
     console.error("[LoginAction] Validation failed:", errorMessages);
-    // Throw an error that the client can catch and display
-    throw new Error(`Invalid input: ${errorMessages}`);
+    return { success: false, error: `Invalid input: ${errorMessages}` };
   }
   
   const { email, password } = parsedCredentials.data;
@@ -34,23 +32,22 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>) {
 
   if (!adminUserRecord) {
     console.log(`[LoginAction] Admin user with email "${lowercasedEmail}" not found.`);
-    throw new Error("Invalid email or password.");
+    return { success: false, error: "Invalid email or password." };
   }
 
   const passwordMatch = await bcryptjs.compare(password, adminUserRecord.passwordHash);
 
   if (!passwordMatch) {
     console.log(`[LoginAction] Password mismatch for user "${lowercasedEmail}".`);
-    throw new Error("Invalid email or password.");
+    return { success: false, error: "Invalid email or password." };
   }
   
   console.log(`[LoginAction] User "${lowercasedEmail}" authenticated successfully.`);
 
-  const sessionRole: AdminRole = adminUserRecord.role as AdminRole;
   const sessionPayload = {
     userId: adminUserRecord.id,
     email: adminUserRecord.email,
-    role: sessionRole,
+    role: adminUserRecord.role,
   };
   const sessionToken = await encryptSession(sessionPayload);
   console.log(`[LoginAction] Session token generated. Redirecting to verification URL.`);

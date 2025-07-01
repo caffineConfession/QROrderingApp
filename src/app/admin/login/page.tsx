@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useForm, type SubmitHandler } from "react-hook-form";
@@ -60,23 +59,37 @@ export default function AdminLoginPage() {
 
   const onLoginSubmit: SubmitHandler<LoginFormSchema> = async (data) => {
     setIsLoading(true);
-    console.log("[Client Login] Submitting login data to server action...");
     try {
-      await loginAction(data);
-      // This part is not expected to be reached on successful redirect
+      const result = await loginAction(data);
+      
+      // If loginAction returns an object, it's a predictable failure (e.g., wrong password).
+      if (result && result.error) {
+        toast({
+          title: "Login Failed",
+          description: result.error,
+          variant: "destructive",
+        });
+        setIsLoading(false);
+      }
+      // If loginAction succeeds, it throws NEXT_REDIRECT, which is caught below.
+      // If it returns nothing (void), we reset loading state as a fallback.
+      else {
+        // This path should ideally not be taken if the action always returns or throws.
+        setIsLoading(false);
+      }
     } catch (error: any) {
       // The `redirect()` function throws an error with the digest 'NEXT_REDIRECT'.
-      // We need to check for this digest to differentiate a successful redirect from a true error.
       if (error.digest?.includes('NEXT_REDIRECT')) {
         console.log("[Client Login] Server initiated redirect. Awaiting navigation...");
-        // This is the expected path. Let the browser handle the redirect from the server's response.
+        // The "isLoading" state will be cleared by the full page navigation.
         return; 
       }
       
-      console.error("[Client Login] Login action failed with an error:", error);
+      // This catches unexpected server errors (e.g., database down).
+      console.error("[Client Login] An unexpected error occurred during login:", error);
       toast({
         title: "Login Failed",
-        description: error.message || "An unexpected error occurred.",
+        description: "An unexpected server error occurred. Please try again.",
         variant: "destructive",
       });
       setIsLoading(false);
