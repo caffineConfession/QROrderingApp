@@ -5,33 +5,40 @@ import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { logoutAction } from "./login/actions";
 import { LogOut } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useTransition } from "react";
 
 export default function LogoutButton() {
   const { toast } = useToast();
+  const [isPending, startTransition] = useTransition();
 
-  const handleLogout = async () => {
-    try {
-      // logoutAction will trigger a redirect, which throws an error.
-      // We expect this, and the browser will handle the navigation.
-      await logoutAction();
-    } catch (error: any) {
-      // If the error is the expected redirect, do nothing.
-      if (error.digest === 'NEXT_REDIRECT') {
-        return;
+  const handleLogout = () => {
+    startTransition(async () => {
+      try {
+        // The logoutAction now triggers a redirect, which throws a catchable error.
+        await logoutAction();
+        // The browser will handle the redirect, so this part of the code might not be reached.
+      } catch (error: any) {
+        // The `redirect()` from a server action throws an error with a specific digest.
+        // We can check for it to confirm the redirect was initiated.
+        if (error.digest === 'NEXT_REDIRECT') {
+            console.log("Server initiated logout redirect.");
+            // Don't show a toast here, just let the browser navigate.
+            return;
+        }
+        // If it's any other error, show a toast.
+        toast({
+          title: "Logout Failed",
+          description: "Could not log out. Please try again.",
+          variant: "destructive",
+        });
       }
-      // If it's any other error, show a toast.
-      toast({
-        title: "Logout Failed",
-        description: "Could not log out. Please try again.",
-        variant: "destructive",
-      });
-    }
+    });
   };
 
   return (
-    <DropdownMenuItem onClick={handleLogout} className="cursor-pointer">
+    <DropdownMenuItem onClick={handleLogout} className="cursor-pointer" disabled={isPending}>
       <LogOut className="mr-2 h-4 w-4" />
-      Logout
+      {isPending ? "Logging out..." : "Logout"}
     </DropdownMenuItem>
   );
 }

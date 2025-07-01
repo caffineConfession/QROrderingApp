@@ -61,23 +61,32 @@ export default function AdminLoginPage() {
     setIsLoading(true);
     console.log("[Client Login] Submitting login data to server action...");
     try {
+      // The server action will now handle the redirect itself.
+      // If it fails, it will return an error object.
       const result = await loginAction(data);
 
-      if (result.success && result.token) {
-        console.log("[Client Login] Login action succeeded, received token. Redirecting to verification URL.");
-        // Redirect to a verification page where middleware will set the cookie
-        window.location.href = `/admin/login/verify?token=${result.token}`;
-      } else {
-        console.error("[Client Login] Login action failed:", result.error);
+      if (result?.error) {
+         console.error("[Client Login] Login action failed:", result.error);
         toast({
           title: "Login Failed",
-          description: result.error || "An unknown error occurred. Please try again.",
+          description: result.error,
           variant: "destructive",
         });
-        setIsLoading(false); // Only set loading to false on failure
+        setIsLoading(false);
       }
+      // On success, the server action triggers a redirect, and this client-side
+      // code execution will stop as the browser navigates away. The loading
+      // spinner will remain until the new page loads.
     } catch (error: any) {
-      // Catch any unexpected network or server errors
+       // The `redirect()` from a server action throws an error with a specific digest.
+       // We should check for it, but otherwise, any other error is a real problem.
+      if (error.digest === 'NEXT_REDIRECT') {
+        // This is expected. The browser will handle the redirect.
+        // We don't need to do anything here, and especially not stop the loading spinner.
+        console.log("[Client Login] Server initiated redirect. Awaiting navigation...");
+        return;
+      }
+      
       console.error("[Client Login] Unexpected error during login submission:", error);
       toast({
         title: "Login Failed",

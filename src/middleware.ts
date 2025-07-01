@@ -15,7 +15,7 @@ export async function middleware(request: NextRequest) {
 
   console.log(`[Middleware] Request for path: ${pathname}`);
 
-  // New: Handle setting the session cookie via redirect
+  // Handle setting the session cookie via redirect from login
   if (pathname === ADMIN_VERIFY_PATH) {
     const token = searchParams.get('token');
     if (!token) {
@@ -25,19 +25,22 @@ export async function middleware(request: NextRequest) {
 
     console.log(`[Middleware] Token found at ${ADMIN_VERIFY_PATH}. Setting cookie and redirecting to dashboard.`);
     const response = NextResponse.redirect(new URL(ADMIN_DASHBOARD_PATH, request.url));
+    
+    // Explicitly set cookie attributes for robust behavior
     response.cookies.set({
       name: 'admin_session',
       value: token,
       path: '/',
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      sameSite: 'lax', // Lax is a good default for security and usability
       expires: new Date(Date.now() + 24 * 60 * 60 * 1000), // 1 day
     });
+    console.log(`[Middleware] Cookie set for response to redirect to dashboard. Secure: ${process.env.NODE_ENV === 'production'}`);
     return response;
   }
 
-  // New: Handle clearing the session cookie on logout
+  // Handle clearing the session cookie on logout
   if (pathname === ADMIN_LOGOUT_PATH) {
     console.log(`[Middleware] At ${ADMIN_LOGOUT_PATH}. Clearing cookie and redirecting to login.`);
     const response = NextResponse.redirect(new URL(ADMIN_LOGIN_PATH, request.url));
@@ -55,8 +58,6 @@ export async function middleware(request: NextRequest) {
   let session = null;
   if (sessionCookieValue) {
     session = await decryptSession(sessionCookieValue);
-  } else {
-    console.log(`[Middleware] No 'admin_session' cookie found for path: ${pathname}`);
   }
 
   // If user is on the login page
@@ -67,7 +68,6 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL(ADMIN_DASHBOARD_PATH, request.url));
     }
     // If they don't have a session, let them see the login page
-    console.log(`[Middleware] On login page without session. Allowing access.`);
     return NextResponse.next({ request: { headers: requestHeaders } });
   }
 

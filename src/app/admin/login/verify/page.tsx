@@ -1,5 +1,8 @@
 import { RefreshCw } from "lucide-react";
 
+// This page is a temporary stop. The middleware intercepts the request to this page,
+// sets the cookie, and then redirects to the dashboard. The user will likely
+// only see this for a brief moment.
 export default function VerifyPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/40">

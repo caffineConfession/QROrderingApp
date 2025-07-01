@@ -7,13 +7,14 @@ import { encryptSession } from '@/lib/session';
 import type { AdminRole } from "@/types";
 import { ResetPasswordSchema, type ResetPasswordFormData } from "./schemas";
 import { redirect } from 'next/navigation';
+import { cookies } from "next/headers";
 
 const loginSchema = z.object({
   email: z.string().email({ message: "Please enter a valid email address." }),
   password: z.string().min(1, { message: "Password is required." }),
 });
 
-export async function loginAction(credentials: z.infer<typeof loginSchema>): Promise<{ success: boolean; error?: string; token?: string }> {
+export async function loginAction(credentials: z.infer<typeof loginSchema>): Promise<{ success: boolean; error?: string; }> {
   console.log("[LoginAction] Attempting login for:", credentials.email);
   
   const parsedCredentials = loginSchema.safeParse(credentials);
@@ -56,12 +57,18 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
       role: sessionRole,
     };
     const sessionToken = await encryptSession(sessionPayload);
-    console.log(`[LoginAction] Session token generated. Returning token to client.`);
+    console.log(`[LoginAction] Session token generated. Redirecting to verification URL.`);
     
-    // Return success and token instead of redirecting
-    return { success: true, token: sessionToken };
+    // Instead of setting cookie here, redirect to a verification URL with the token.
+    // The middleware will catch this, set the cookie, and redirect to the dashboard.
+    redirect(`/admin/login/verify?token=${sessionToken}`);
 
   } catch (error: any) {
+    // If the error is a NEXT_REDIRECT, re-throw it so Next.js can handle it.
+    if (error.digest === 'NEXT_REDIRECT') {
+        console.log("[LoginAction] Caught NEXT_REDIRECT, re-throwing.");
+        throw error;
+    }
     const errorMessage = error.message || "An unknown error occurred during login process.";
     const errorName = error.name || "UnknownError";
     console.error(`[LoginAction] GENERAL ERROR: Name: ${errorName}, Message: ${errorMessage}`, error.stack);
@@ -70,9 +77,9 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
 }
 
 export async function logoutAction(): Promise<void> {
+  // This action's sole purpose is to trigger a redirect to a path
+  // that the middleware will intercept to clear the cookie.
   console.log("[LogoutAction] Initiating logout. Redirecting to clear session via middleware.");
-  // This redirect will be caught by the middleware, which will clear the cookie
-  // and then redirect to the login page.
   redirect('/admin/logout');
 }
 
