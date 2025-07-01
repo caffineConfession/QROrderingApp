@@ -34,6 +34,7 @@ export default function AdminLoginPage() {
         description: decodeURIComponent(errorParam),
         variant: "destructive",
       });
+      // Clean the URL after showing the toast
       const currentPath = window.location.pathname;
       window.history.replaceState(null, '', currentPath);
     }
@@ -60,25 +61,26 @@ export default function AdminLoginPage() {
     setIsLoading(true);
     console.log("[Client Login] Submitting login data to server action...");
     try {
-      const result = await loginAction(data);
-      if (result?.error) {
-        toast({
-          title: "Login Failed",
-          description: result.error,
-          variant: "destructive",
-        });
-        setIsLoading(false);
-      }
+      // The loginAction will throw a NEXT_REDIRECT error on success.
+      // This is expected, and the browser will handle the redirect automatically.
+      await loginAction(data);
     } catch (error: any) {
-      if (error.constructor.name !== 'RedirectError') {
-          console.error("[Client Login] Error during login submission:", error);
-          toast({
-            title: "Login System Error",
-            description: `An unexpected error occurred: ${error.message || "Please try again."}`,
-            variant: "destructive",
-          });
-          setIsLoading(false);
+      // If the error digest is 'NEXT_REDIRECT', it's an expected redirect.
+      // We let the browser handle it and do nothing here.
+      if (error.digest === 'NEXT_REDIRECT') {
+        // This is the expected flow for a successful login.
+        // The loading state will be cleared by the subsequent page navigation.
+        return;
       }
+      
+      // Any other error is a real login failure.
+      console.error("[Client Login] Error during login submission:", error);
+      toast({
+        title: "Login Failed",
+        description: `Server Error: ${error.message || "Please try again."}`,
+        variant: "destructive",
+      });
+      setIsLoading(false);
     }
   };
 

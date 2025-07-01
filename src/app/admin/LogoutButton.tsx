@@ -11,15 +11,20 @@ export default function LogoutButton() {
 
   const handleLogout = async () => {
     try {
+      // logoutAction will trigger a redirect, which throws an error.
+      // We expect this, and the browser will handle the navigation.
       await logoutAction();
     } catch (error: any) {
-      if (error.constructor.name !== 'RedirectError') {
-         toast({
-            title: "Logout Failed",
-            description: "Could not log out. Please try again.",
-            variant: "destructive",
-          });
+      // If the error is the expected redirect, do nothing.
+      if (error.digest === 'NEXT_REDIRECT') {
+        return;
       }
+      // If it's any other error, show a toast.
+      toast({
+        title: "Logout Failed",
+        description: "Could not log out. Please try again.",
+        variant: "destructive",
+      });
     }
   };
 

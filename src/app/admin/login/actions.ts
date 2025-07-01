@@ -58,10 +58,13 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
     const sessionToken = await encryptSession(sessionPayload);
     console.log(`[LoginAction] Session token generated. Redirecting to verification path.`);
     
+    // This redirect will be caught by the middleware, which will then set the cookie.
     redirect(`/admin/login/verify?token=${sessionToken}`);
 
   } catch (error: any) {
-    if (error.constructor.name === 'RedirectError') {
+    // This is crucial. If the error is a redirect, we must re-throw it
+    // so Next.js can handle it and send the redirect response to the browser.
+    if (error.digest === 'NEXT_REDIRECT') {
       console.log("[LoginAction] Caught NEXT_REDIRECT, re-throwing.");
       throw error;
     }
@@ -73,7 +76,9 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
 }
 
 export async function logoutAction(): Promise<void> {
-  console.log("[LogoutAction] Initiating logout. Redirecting to clear session.");
+  console.log("[LogoutAction] Initiating logout. Redirecting to clear session via middleware.");
+  // This redirect will be caught by the middleware, which will clear the cookie
+  // and then redirect to the login page.
   redirect('/admin/logout');
 }
 
