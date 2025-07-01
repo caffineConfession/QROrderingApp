@@ -13,7 +13,7 @@ const loginSchema = z.object({
   password: z.string().min(1, { message: "Password is required." }),
 });
 
-export async function loginAction(credentials: z.infer<typeof loginSchema>): Promise<{ success: boolean; error?: string; }> {
+export async function loginAction(credentials: z.infer<typeof loginSchema>): Promise<{ success: boolean; error?: string; token?: string }> {
   console.log("[LoginAction] Attempting login for:", credentials.email);
   
   const parsedCredentials = loginSchema.safeParse(credentials);
@@ -56,18 +56,12 @@ export async function loginAction(credentials: z.infer<typeof loginSchema>): Pro
       role: sessionRole,
     };
     const sessionToken = await encryptSession(sessionPayload);
-    console.log(`[LoginAction] Session token generated. Redirecting to verification path.`);
+    console.log(`[LoginAction] Session token generated. Returning token to client.`);
     
-    // This redirect will be caught by the middleware, which will then set the cookie.
-    redirect(`/admin/login/verify?token=${sessionToken}`);
+    // Return success and token instead of redirecting
+    return { success: true, token: sessionToken };
 
   } catch (error: any) {
-    // This is crucial. If the error is a redirect, we must re-throw it
-    // so Next.js can handle it and send the redirect response to the browser.
-    if (error.digest === 'NEXT_REDIRECT') {
-      console.log("[LoginAction] Caught NEXT_REDIRECT, re-throwing.");
-      throw error;
-    }
     const errorMessage = error.message || "An unknown error occurred during login process.";
     const errorName = error.name || "UnknownError";
     console.error(`[LoginAction] GENERAL ERROR: Name: ${errorName}, Message: ${errorMessage}`, error.stack);

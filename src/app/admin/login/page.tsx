@@ -61,23 +61,27 @@ export default function AdminLoginPage() {
     setIsLoading(true);
     console.log("[Client Login] Submitting login data to server action...");
     try {
-      // The loginAction will throw a NEXT_REDIRECT error on success.
-      // This is expected, and the browser will handle the redirect automatically.
-      await loginAction(data);
-    } catch (error: any) {
-      // If the error digest is 'NEXT_REDIRECT', it's an expected redirect.
-      // We let the browser handle it and do nothing here.
-      if (error.digest === 'NEXT_REDIRECT') {
-        // This is the expected flow for a successful login.
-        // The loading state will be cleared by the subsequent page navigation.
-        return;
+      const result = await loginAction(data);
+
+      if (result.success && result.token) {
+        console.log("[Client Login] Login action succeeded, received token. Redirecting to verification URL.");
+        // Redirect to a verification page where middleware will set the cookie
+        window.location.href = `/admin/login/verify?token=${result.token}`;
+      } else {
+        console.error("[Client Login] Login action failed:", result.error);
+        toast({
+          title: "Login Failed",
+          description: result.error || "An unknown error occurred. Please try again.",
+          variant: "destructive",
+        });
+        setIsLoading(false); // Only set loading to false on failure
       }
-      
-      // Any other error is a real login failure.
-      console.error("[Client Login] Error during login submission:", error);
+    } catch (error: any) {
+      // Catch any unexpected network or server errors
+      console.error("[Client Login] Unexpected error during login submission:", error);
       toast({
         title: "Login Failed",
-        description: `Server Error: ${error.message || "Please try again."}`,
+        description: `Client Error: ${error.message || "Please try again."}`,
         variant: "destructive",
       });
       setIsLoading(false);
