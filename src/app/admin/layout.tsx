@@ -29,10 +29,10 @@ interface AdminLayoutProps {
 }
 
 export default async function AdminLayout({ children }: AdminLayoutProps) {
-  const cookieStore = cookies();
-  const requestHeaders = headers();
+  const cookieStore = await cookies(); // Await cookies
+  const requestHeaders = await headers(); // Await headers
 
-  const pathname = requestHeaders.get("next-url") || "unknown_path";
+  const pathname = requestHeaders.get("next-url")?.split('/').slice(3).join('/') || "unknown_path"; // Extract admin path
   console.log(`[AdminLayout] Rendering for path: ${pathname}`);
 
   let session: AdminSessionPayload | null = null;
@@ -41,8 +41,12 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
   try {
     const sessionCookie = cookieStore.get("admin_session")?.value;
     console.log(`[AdminLayout] Session cookie: ${sessionCookie ? `'${sessionCookie.substring(0, 20)}...'` : "not found"}`);
-
-    if (sessionCookie) {
+ 
+    // Only attempt to decrypt if the cookie exists
+    if (!sessionCookie) {
+      console.warn("[AdminLayout] No admin session cookie found.");
+      session = null; // Ensure session is null if no cookie
+    } else {
       session = await decryptSession(sessionCookie);
       console.log("[AdminLayout] Decrypted session:", session);
     }
